@@ -259,6 +259,30 @@
       border: 1px solid var(--border);
     }
 
+    /* User answer area (conceptual questions) */
+    .your-answer-section {
+      display: none; margin-bottom: 1rem;
+    }
+    .your-answer-section.show { display: block; }
+    .your-answer-section h4 {
+      font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted); margin-bottom: 0.5rem;
+    }
+    .your-answer-textarea {
+      width: 100%; min-height: 120px; max-height: 400px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.85rem; color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 0.88rem; line-height: 1.6; resize: vertical;
+      transition: border-color 0.2s;
+    }
+    .your-answer-textarea:focus { outline: none; border-color: var(--accent); }
+    .your-answer-textarea::placeholder { color: var(--text-muted); opacity: 0.6; }
+    .your-answer-hint {
+      font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;
+      font-style: italic;
+    }
+
     /* Confidence rating */
     .confidence-row {
       display: flex; align-items: center; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap;
@@ -557,6 +581,11 @@
     <div class="question-card" id="questionCard" style="display:none">
       <div class="q-badges" id="qBadges"></div>
       <div class="q-text" id="qText"></div>
+      <div class="your-answer-section" id="yourAnswerSection">
+        <h4>✏️ Your Answer</h4>
+        <textarea class="your-answer-textarea" id="yourAnswerTextarea" placeholder="Write your answer here before revealing the reference answer..."></textarea>
+        <div class="your-answer-hint">Your answer is saved automatically. Compare it against the reference when you're ready.</div>
+      </div>
       <button class="show-answer-btn" id="showAnswerBtn">👁 Show Answer</button>
       <div class="answer-panel" id="answerPanel">
         <h4>Answer</h4>
@@ -856,6 +885,18 @@ function showQuestion(idx) {
   // Confidence stars
   buildConfidenceStars(q.id);
 
+  // User answer textarea (conceptual questions)
+  const yourAnswerSection = document.getElementById('yourAnswerSection');
+  const yourAnswerTextarea = document.getElementById('yourAnswerTextarea');
+  if (q.type !== 'coding') {
+    yourAnswerSection.classList.add('show');
+    // Load saved answer
+    const savedAnswers = storageGet('userAnswers') || {};
+    yourAnswerTextarea.value = savedAnswers[q.id] || '';
+  } else {
+    yourAnswerSection.classList.remove('show');
+  }
+
   // Coding section
   const codingSection = document.getElementById('codingSection');
   if (q.type === 'coding' && q.starterCode) {
@@ -1137,6 +1178,16 @@ document.getElementById('resetCodeBtn').addEventListener('click', () => {
 // ─────────────────────────────────────────────
 // ANSWER TOGGLE
 // ─────────────────────────────────────────────
+// Auto-save user answers for conceptual questions
+document.getElementById('yourAnswerTextarea').addEventListener('input', () => {
+  if (filteredQuestions.length === 0) return;
+  const q = filteredQuestions[currentIndex];
+  if (!q) return;
+  const savedAnswers = storageGet('userAnswers') || {};
+  savedAnswers[q.id] = document.getElementById('yourAnswerTextarea').value;
+  storageSet('userAnswers', savedAnswers);
+});
+
 document.getElementById('showAnswerBtn').addEventListener('click', () => {
   toggleAnswer();
 });
@@ -1295,6 +1346,7 @@ function stopTimer() {
 document.getElementById('clearProgressBtn').addEventListener('click', () => {
   if (confirm('Clear all progress? This cannot be undone.')) {
     storageSet('progress', { viewed: {}, coding: {}, confidence: {} });
+    storageSet('userAnswers', {});
     buildCategoryList();
     updateStats();
     showQuestion(currentIndex);
