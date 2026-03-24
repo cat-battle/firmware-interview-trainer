@@ -1030,14 +1030,17 @@ function initMonaco(cb) {
   require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
   require(['vs/editor/editor.main'], function() {
     monacoLoaded = true;
-    // Load monaco-vim
+    // Load monaco-vim — must hide AMD 'define' so it sets window.MonacoVim
+    const _define = window.define;
+    window.define = undefined;
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/monaco-vim@0.4.1/dist/monaco-vim.js';
     script.onload = () => {
+      window.define = _define;
       VimLib = window.MonacoVim;
       cb && cb();
     };
-    script.onerror = () => { cb && cb(); }; // vim optional
+    script.onerror = () => { window.define = _define; cb && cb(); }; // vim optional
     document.head.appendChild(script);
   });
 }
