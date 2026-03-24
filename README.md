@@ -8,7 +8,7 @@ An open-source, interactive interview prep tool for firmware and embedded system
 
 ## Features
 
-- 🎯 **24+ firmware-specific questions** across 8 categories
+- 🎯 **33+ firmware-specific questions** across 8 categories
 - 💻 **Live C compilation** — write, compile, and run C code in the browser
 - ✅ **Test case validation** — automated pass/fail checking for coding questions
 - ⏱️ **Timer mode** — simulate interview pressure with countdown timers
@@ -21,14 +21,14 @@ An open-source, interactive interview prep tool for firmware and embedded system
 
 | Category | Questions | Description |
 |----------|-----------|-------------|
-| 🔤 C Language Deep Cuts | 6 | volatile, const, static, struct packing, offsetof, memory pools |
-| 🔧 Bit Manipulation & Registers | 3 | Set/clear/toggle bits, bit field extraction, ring buffers |
+| 🔤 C Language | 6 | volatile, const, static, struct packing, offsetof, memory pools |
+| 🔧 Bit Manipulation | 3 | Set/clear/toggle bits, bit field extraction, ring buffers |
 | 🔄 Concurrency & RTOS | 4 | Priority inversion, deadlocks, mutexes vs semaphores, state machines |
-| ⚡ Interrupts & ISR Design | 3 | ISR best practices, ARM Cortex-M NVIC, watchdog timers |
+| ⚡ Interrupts & ISR | 3 | ISR best practices, ARM Cortex-M NVIC, watchdog timers |
 | 💾 Memory & Storage | 3 | Memory layout, malloc alternatives, NOR vs NAND flash |
 | 🏗️ System Design | 4 | Secure boot, OTA updates, safety-critical systems, low-power design |
-| 🐛 Debugging Scenarios | 2 | Field crash debugging, HardFault analysis |
-| 🔌 Protocols & Interfaces | 8 | SPI/I2C, USB enumeration, UART, CAN, DMA, Ethernet |
+| 🐛 Debugging | 2 | Field crash debugging, HardFault analysis |
+| 🔌 Protocols | 8 | SPI/I2C, USB enumeration, UART, CAN bus, DMA, Ethernet |
 
 ## Quick Start
 

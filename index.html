@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔧 Firmware Interview Trainer</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-hover: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --error: #f85149;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 200;
+    }
+    .header-left { display: flex; align-items: center; gap: 0.75rem; }
+    .header-title { font-size: 1.1rem; font-weight: 700; }
+    .header-subtitle { font-size: 0.78rem; color: var(--text-muted); }
+    .header-right { display: flex; align-items: center; gap: 0.75rem; }
+    .github-link {
+      display: flex; align-items: center; gap: 0.4rem;
+      color: var(--text-muted); text-decoration: none;
+      font-size: 0.83rem; padding: 0.3rem 0.6rem;
+      border: 1px solid var(--border); border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .github-link:hover { color: var(--text); border-color: var(--text-muted); }
+    .github-link svg { width: 16px; height: 16px; fill: currentColor; }
+    .submit-link {
+      color: var(--accent); text-decoration: none; font-size: 0.83rem;
+      padding: 0.3rem 0.7rem; border: 1px solid var(--accent);
+      border-radius: 6px; transition: all 0.15s;
+    }
+    .submit-link:hover { background: rgba(88,166,255,0.1); }
+
+    /* hamburger */
+    .hamburger {
+      display: none; background: none; border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.35rem 0.5rem; cursor: pointer; color: var(--text);
+      font-size: 1rem; line-height: 1;
+    }
+
+    /* ── LAYOUT ── */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: calc(100vh - 50px);
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+      overflow-y: auto;
+      position: sticky;
+      top: 50px;
+      height: calc(100vh - 50px);
+      transition: transform 0.25s ease;
+    }
+    .sidebar.mobile-hidden { display: none; }
+
+    .sidebar-section { margin-bottom: 1.25rem; }
+    .sidebar-section h3 {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); margin-bottom: 0.6rem;
+    }
+
+    .stats-bar {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.6rem 0.75rem;
+      font-size: 0.78rem; color: var(--text-muted);
+      text-align: center; line-height: 1.9; margin-bottom: 1rem;
+    }
+    .stats-bar strong { color: var(--accent); }
+
+    /* Category list */
+    .category-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .cat-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.3rem 0.5rem; border-radius: 6px;
+      cursor: pointer; transition: background 0.15s; font-size: 0.82rem;
+    }
+    .cat-item:hover { background: var(--surface-hover); }
+    .cat-item input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+    .cat-icon { font-size: 0.9rem; }
+    .cat-label { flex: 1; }
+    .cat-count { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; }
+    .cat-progress { height: 2px; background: var(--border); border-radius: 2px; margin-top: 2px; overflow: hidden; margin-left: 1.4rem; }
+    .cat-progress-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+
+    /* Filters */
+    .filter-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .filter-row select, .filter-select {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 0.8rem;
+      padding: 0.35rem 0.5rem; cursor: pointer; appearance: none;
+    }
+    .filter-select { width: 100%; margin-bottom: 0.4rem; }
+    .filter-row select:focus, .filter-select:focus { outline: none; border-color: var(--accent); }
+
+    .random-btn {
+      width: 100%; padding: 0.5rem; background: var(--accent);
+      color: var(--bg); border: none; border-radius: 8px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s; margin-top: 0.25rem;
+    }
+    .random-btn:hover { opacity: 0.85; }
+
+    /* Timer */
+    .timer-display {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 1.35rem;
+      font-weight: 700; text-align: center; padding: 0.45rem;
+      border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
+      transition: color 0.3s, border-color 0.3s; margin-bottom: 0.4rem;
+    }
+    .timer-display.running { color: var(--success); border-color: var(--success); }
+    .timer-display.warn { color: var(--warning); border-color: var(--warning); }
+    .timer-display.urgent { color: var(--error); border-color: var(--error); animation: pulse 0.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    .timer-bar-bg {
+      width: 100%; height: 4px; background: var(--border);
+      border-radius: 2px; overflow: hidden; margin-bottom: 0.4rem;
+    }
+    .timer-bar-fill {
+      height: 100%; background: var(--success); border-radius: 2px;
+      transition: width 1s linear, background 0.5s;
+    }
+    .timer-presets { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+    .timer-preset-btn {
+      flex: 1; padding: 0.28rem 0.3rem; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted);
+      font-size: 0.73rem; cursor: pointer; transition: all 0.15s;
+    }
+    .timer-preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .timer-preset-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.08); }
+    .timer-toggle-btn {
+      width: 100%; padding: 0.38rem; background: var(--surface-hover);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+      font-size: 0.8rem; cursor: pointer; transition: all 0.15s;
+    }
+    .timer-toggle-btn:hover { border-color: var(--success); color: var(--success); }
+    .timer-toggle-btn.running { border-color: var(--error); color: var(--error); }
+
+    .clear-btn {
+      width: 100%; padding: 0.38rem; background: none;
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted);
+      font-size: 0.78rem; cursor: pointer; transition: all 0.15s;
+    }
+    .clear-btn:hover { border-color: var(--error); color: var(--error); }
+
+    /* ── MAIN ── */
+    .main-content { padding: 1.5rem; overflow-y: auto; }
+
+    /* Error/info banner */
+    .banner {
+      padding: 1rem 1.25rem; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      margin-bottom: 1.5rem; display: none;
+    }
+    .banner.show { display: block; }
+    .banner.error { border-color: var(--error); }
+    .banner h3 { margin-bottom: 0.4rem; }
+    .banner code { font-family: monospace; background: var(--bg); padding: 0.15rem 0.35rem; border-radius: 4px; }
+
+    /* Question nav bar */
+    .question-nav-bar {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap;
+    }
+    .q-counter { font-size: 0.8rem; color: var(--text-muted); font-family: monospace; flex: 1; }
+    .q-nav-btns { display: flex; gap: 0.4rem; align-items: center; }
+    .nav-btn {
+      padding: 0.3rem 0.75rem; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text-muted); font-size: 0.83rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .nav-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* Question card */
+    .question-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; margin-bottom: 1.25rem;
+    }
+    .q-badges { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.2rem 0.55rem; border-radius: 20px; font-size: 0.72rem;
+      font-weight: 600; letter-spacing: 0.03em;
+    }
+    .badge-category { background: rgba(88,166,255,0.15); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); }
+    .badge-difficulty-easy { background: rgba(63,185,80,0.15); border: 1px solid rgba(63,185,80,0.3); color: var(--success); }
+    .badge-difficulty-medium { background: rgba(210,153,34,0.15); border: 1px solid rgba(210,153,34,0.3); color: var(--warning); }
+    .badge-difficulty-hard { background: rgba(248,81,73,0.15); border: 1px solid rgba(248,81,73,0.3); color: var(--error); }
+    .badge-type { background: rgba(139,148,158,0.12); border: 1px solid var(--border); color: var(--text-muted); }
+    .badge-id { background: none; border: 1px solid var(--border); color: var(--text-muted); font-family: monospace; font-size: 0.68rem; }
+
+    .q-text {
+      font-size: 1.05rem; line-height: 1.65; margin-bottom: 1.25rem;
+      color: var(--text);
+    }
+
+    /* Answer toggle */
+    .show-answer-btn {
+      padding: 0.45rem 1rem; background: none; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-muted); font-size: 0.85rem;
+      cursor: pointer; transition: all 0.15s; margin-bottom: 1rem;
+    }
+    .show-answer-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .show-answer-btn.revealed { border-color: var(--success); color: var(--success); }
+
+    .answer-panel {
+      display: none; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.25rem;
+      animation: fadeIn 0.2s ease;
+    }
+    .answer-panel.show { display: block; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+    .answer-panel h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 0.75rem; }
+    .answer-panel pre {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 0.82rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem; overflow-x: auto;
+      white-space: pre-wrap; word-break: break-word; line-height: 1.55;
+    }
+    .answer-text { font-size: 0.9rem; line-height: 1.7; white-space: pre-wrap; }
+    .answer-text code {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 0.83em;
+      background: var(--surface); padding: 0.1em 0.35em; border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* Confidence rating */
+    .confidence-row {
+      display: flex; align-items: center; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap;
+    }
+    .confidence-label { font-size: 0.78rem; color: var(--text-muted); }
+    .confidence-stars { display: flex; gap: 0.25rem; }
+    .star-btn {
+      background: none; border: none; font-size: 1.1rem;
+      cursor: pointer; opacity: 0.35; transition: opacity 0.15s, transform 0.1s;
+      line-height: 1; padding: 0;
+    }
+    .star-btn.active { opacity: 1; }
+    .star-btn:hover { transform: scale(1.2); opacity: 0.9; }
+
+    /* ── CODING SANDBOX ── */
+    .coding-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden; margin-bottom: 1.25rem; display: none;
+    }
+    .coding-section.show { display: block; }
+
+    .coding-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 1rem; border-bottom: 1px solid var(--border);
+      background: var(--bg); flex-wrap: wrap; gap: 0.5rem;
+    }
+    .coding-header-left { display: flex; align-items: center; gap: 0.75rem; }
+    .coding-title { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+    .coding-header-right { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+    .toggle-switch-wrap {
+      display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--text-muted);
+    }
+    .toggle-switch {
+      position: relative; display: inline-block; width: 32px; height: 18px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--border); border-radius: 18px; transition: 0.2s;
+    }
+    .toggle-slider:before {
+      content: ''; position: absolute; width: 12px; height: 12px;
+      left: 3px; bottom: 3px; background: var(--text-muted); border-radius: 50%; transition: 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(14px); background: white; }
+
+    .code-btn {
+      padding: 0.3rem 0.75rem; border-radius: 6px; font-size: 0.8rem;
+      cursor: pointer; border: 1px solid var(--border); transition: all 0.15s;
+    }
+    .run-btn { background: var(--success); color: var(--bg); border-color: var(--success); font-weight: 600; }
+    .run-btn:hover { opacity: 0.85; }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .reset-btn { background: none; color: var(--text-muted); }
+    .reset-btn:hover { border-color: var(--warning); color: var(--warning); }
+
+    #editor-container {
+      width: 100%; height: 320px; border-bottom: 1px solid var(--border);
+    }
+
+    /* Output panel */
+    .output-panel { padding: 0.75rem 1rem; }
+    .output-panel h4 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .output-pre {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 0.8rem;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.6rem 0.75rem; min-height: 40px;
+      max-height: 200px; overflow-y: auto; color: var(--text); white-space: pre-wrap;
+      word-break: break-word; line-height: 1.5;
+    }
+    .output-pre.has-error { border-color: var(--error); color: var(--error); }
+    .output-pre.has-success { border-color: var(--success); }
+
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Test cases */
+    .test-cases { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .test-case-row {
+      display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.78rem;
+      padding: 0.3rem 0.5rem; border-radius: 6px; background: var(--bg);
+    }
+    .tc-icon { font-size: 0.85rem; flex-shrink: 0; margin-top: 0.05rem; }
+    .tc-desc { color: var(--text-muted); flex: 1; }
+    .tc-expected { font-family: monospace; color: var(--text-muted); font-size: 0.75rem; }
+    .test-case-row.pass { background: rgba(63,185,80,0.07); }
+    .test-case-row.fail { background: rgba(248,81,73,0.07); }
+
+    /* Keyboard hint */
+    .kbd-hints {
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      font-size: 0.72rem; color: var(--text-muted); margin-bottom: 1rem;
+    }
+    kbd {
+      display: inline-block; padding: 0.1rem 0.4rem; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.7rem;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 4rem 2rem; color: var(--text-muted);
+      display: none;
+    }
+    .empty-state.show { display: block; }
+    .empty-state h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--text); }
+    .empty-state p { font-size: 0.88rem; line-height: 1.6; }
+
+    /* Loading state */
+    .loading-state {
+      text-align: center; padding: 4rem 2rem; color: var(--text-muted);
+    }
+    .loading-spinner-lg {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 1rem;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .app-layout { grid-template-columns: 1fr; }
+      .sidebar {
+        position: fixed; top: 50px; left: 0; width: 280px;
+        height: calc(100vh - 50px); z-index: 150;
+        transform: translateX(-100%); transition: transform 0.25s ease;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .hamburger { display: flex; align-items: center; }
+      .header-subtitle { display: none; }
+      .main-content { padding: 1rem; }
+      .sidebar-overlay {
+        display: none; position: fixed; inset: 0; top: 50px;
+        background: rgba(0,0,0,0.5); z-index: 140;
+      }
+      .sidebar-overlay.show { display: block; }
+      #editor-container { height: 260px; }
+    }
+
+    /* markdown-ish rendering in answers */
+    .answer-rendered h1, .answer-rendered h2, .answer-rendered h3 {
+      color: var(--text); margin: 0.75rem 0 0.35rem; font-size: 0.95rem;
+    }
+    .answer-rendered p { margin-bottom: 0.6rem; font-size: 0.9rem; line-height: 1.7; }
+    .answer-rendered ul, .answer-rendered ol { margin: 0.4rem 0 0.7rem 1.4rem; font-size: 0.88rem; line-height: 1.65; }
+    .answer-rendered li { margin-bottom: 0.2rem; }
+    .answer-rendered code {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 0.82em;
+      background: var(--surface); padding: 0.1em 0.35em;
+      border-radius: 4px; border: 1px solid var(--border);
+    }
+    .answer-rendered pre {
+      font-family: 'SF Mono', Consolas, monospace; font-size: 0.8rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.85rem 1rem; overflow-x: auto;
+      white-space: pre; line-height: 1.55; margin: 0.5rem 0 0.75rem;
+    }
+    .answer-rendered pre code { background: none; border: none; padding: 0; font-size: inherit; }
+    .answer-rendered strong { color: var(--text); }
+    .answer-rendered table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 0.75rem; font-size: 0.82rem; }
+    .answer-rendered th, .answer-rendered td { border: 1px solid var(--border); padding: 0.35rem 0.65rem; text-align: left; }
+    .answer-rendered th { background: var(--surface); color: var(--text); }
+    .answer-rendered blockquote { border-left: 3px solid var(--accent); padding-left: 0.75rem; color: var(--text-muted); margin: 0.5rem 0; }
+
+    .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <button class="hamburger" id="hamburger" aria-label="Toggle sidebar">☰</button>
+    <div>
+      <div class="header-title">🔧 Firmware Interview Trainer</div>
+      <div class="header-subtitle">Open-source interview prep for embedded engineers</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <a class="submit-link" href="https://github.com/cat-battle/firmware-interview-trainer/issues/new?template=new-question.md" target="_blank" rel="noopener">+ Submit Question</a>
+    <a class="github-link" href="https://github.com/cat-battle/firmware-interview-trainer" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<!-- Sidebar overlay (mobile) -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="app-layout">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar scrollbar-thin" id="sidebar">
+
+    <!-- Stats -->
+    <div class="stats-bar" id="statsBar">
+      Loading...
+    </div>
+
+    <!-- Category filters -->
+    <div class="sidebar-section">
+      <h3>Categories</h3>
+      <div class="category-list" id="categoryList"></div>
+    </div>
+
+    <!-- Difficulty + Type filters -->
+    <div class="sidebar-section">
+      <h3>Filters</h3>
+      <select class="filter-select" id="difficultyFilter">
+        <option value="all">All Difficulties</option>
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+      <select class="filter-select" id="typeFilter">
+        <option value="all">All Types</option>
+        <option value="conceptual">Conceptual</option>
+        <option value="coding">Coding</option>
+      </select>
+    </div>
+
+    <!-- Navigation -->
+    <div class="sidebar-section">
+      <h3>Navigation</h3>
+      <button class="random-btn" id="randomBtn">🎲 Random Question</button>
+    </div>
+
+    <!-- Timer -->
+    <div class="sidebar-section">
+      <h3>Timer Mode</h3>
+      <div class="timer-display" id="timerDisplay">--:--</div>
+      <div class="timer-bar-bg"><div class="timer-bar-fill" id="timerBar" style="width:100%"></div></div>
+      <div class="timer-presets">
+        <button class="timer-preset-btn active" data-min="5">5m</button>
+        <button class="timer-preset-btn" data-min="10">10m</button>
+        <button class="timer-preset-btn" data-min="15">15m</button>
+        <button class="timer-preset-btn" data-min="30">30m</button>
+      </div>
+      <button class="timer-toggle-btn" id="timerToggleBtn">▶ Start Timer</button>
+    </div>
+
+    <!-- Progress -->
+    <div class="sidebar-section">
+      <h3>Progress</h3>
+      <button class="clear-btn" id="clearProgressBtn">🗑 Clear All Progress</button>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main-content">
+
+    <!-- Error banner -->
+    <div class="banner error" id="errorBanner">
+      <h3>⚠️ Could not load questions</h3>
+      <p>If you're opening this file directly (<code>file://</code> protocol), fetch() is blocked by the browser. Please serve via a local web server:</p>
+      <br>
+      <code>python3 -m http.server 8090</code>
+      <p style="margin-top:0.5rem">Then visit <code>http://localhost:8090</code></p>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-state" id="loadingState">
+      <div class="loading-spinner-lg"></div>
+      <p>Loading questions…</p>
+    </div>
+
+    <!-- Keyboard hints -->
+    <div class="kbd-hints" id="kbdHints" style="display:none">
+      <span><kbd>Space</kbd> toggle answer</span>
+      <span><kbd>N</kbd> next</span>
+      <span><kbd>P</kbd> previous</span>
+      <span><kbd>R</kbd> random</span>
+    </div>
+
+    <!-- Question navigation bar -->
+    <div class="question-nav-bar" id="questionNavBar" style="display:none">
+      <span class="q-counter" id="qCounter"></span>
+      <div class="q-nav-btns">
+        <button class="nav-btn" id="prevBtn">← Prev</button>
+        <button class="nav-btn" id="nextBtn">Next →</button>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <h3>No questions match your filters</h3>
+      <p>Try adjusting the category, difficulty, or type filters in the sidebar.</p>
+    </div>
+
+    <!-- Question card -->
+    <div class="question-card" id="questionCard" style="display:none">
+      <div class="q-badges" id="qBadges"></div>
+      <div class="q-text" id="qText"></div>
+      <button class="show-answer-btn" id="showAnswerBtn">👁 Show Answer</button>
+      <div class="answer-panel" id="answerPanel">
+        <h4>Answer</h4>
+        <div class="answer-rendered" id="answerContent"></div>
+      </div>
+      <div class="confidence-row" id="confidenceRow">
+        <span class="confidence-label">Confidence:</span>
+        <div class="confidence-stars" id="confidenceStars"></div>
+      </div>
+    </div>
+
+    <!-- Coding sandbox -->
+    <div class="coding-section" id="codingSection">
+      <div class="coding-header">
+        <div class="coding-header-left">
+          <span class="coding-title">💻 C Sandbox</span>
+        </div>
+        <div class="coding-header-right">
+          <div class="toggle-switch-wrap">
+            <label class="toggle-switch">
+              <input type="checkbox" id="vimToggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            Vim mode
+          </div>
+          <button class="code-btn reset-btn" id="resetCodeBtn">↺ Reset</button>
+          <button class="code-btn run-btn" id="runCodeBtn">▶ Run Code</button>
+        </div>
+      </div>
+      <div id="editor-container"></div>
+      <div class="output-panel">
+        <h4>Output</h4>
+        <div class="output-pre" id="outputPre">Run your code to see output…</div>
+        <div class="test-cases" id="testCases"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Monaco Editor -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
+<script>
+// ─────────────────────────────────────────────
+// STORAGE HELPERS
+// ─────────────────────────────────────────────
+const STORAGE_PREFIX = 'fw-interview-';
+
+function storageGet(key) {
+  try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + key)); } catch { return null; }
+}
+function storageSet(key, val) {
+  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(val)); } catch {}
+}
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let allQuestions = [];
+let categories = {};
+let filteredQuestions = [];
+let currentIndex = 0;
+let monacoEditor = null;
+let vimMode = null;
+let vimModeEnabled = true;
+let timerInterval = null;
+let timerSeconds = 0;
+let timerDuration = 5 * 60;
+let timerRunning = false;
+
+// ─────────────────────────────────────────────
+// SIMPLE MARKDOWN RENDERER
+// ─────────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = text;
+
+  // Fenced code blocks
+  html = html.replace(/```(?:\w+)?\n([\s\S]*?)```/g, (_, code) =>
+    `<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`
+  );
+
+  // Inline code
+  html = html.replace(/`([^`\n]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Tables (basic)
+  html = html.replace(/(\|.+\|\n)+/g, (match) => {
+    const rows = match.trim().split('\n');
+    let tableHtml = '<table>';
+    rows.forEach((row, i) => {
+      if (/^\|[\s\-|]+\|$/.test(row.trim())) return; // separator row
+      const cells = row.trim().replace(/^\||\|$/g, '').split('|');
+      const tag = i === 0 ? 'th' : 'td';
+      tableHtml += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    });
+    return tableHtml + '</table>';
+  });
+
+  // Ordered lists
+  html = html.replace(/((?:^\d+\. .+\n?)+)/gm, (match) => {
+    const items = match.trim().split('\n').map(l => `<li>${l.replace(/^\d+\.\s+/, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Unordered lists
+  html = html.replace(/((?:^[*\-] .+\n?)+)/gm, (match) => {
+    const items = match.trim().split('\n').map(l => `<li>${l.replace(/^[*\-]\s+/, '')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Paragraphs (double newline)
+  html = html.replace(/\n\n+/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+
+  // Clean up around block elements
+  html = html.replace(/<p>(<(?:pre|ul|ol|table|h[1-6]|blockquote)[\s\S]*?<\/(?:pre|ul|ol|table|h[1-6]|blockquote)>)<\/p>/g, '$1');
+  html = html.replace(/<p>\s*<\/p>/g, '');
+
+  // Single newlines → <br>
+  html = html.replace(/(?<!>)\n(?!<)/g, '<br>');
+
+  return html;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─────────────────────────────────────────────
+// LOAD QUESTIONS
+// ─────────────────────────────────────────────
+async function loadQuestions() {
+  try {
+    const res = await fetch('./questions.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    categories = data.categories || {};
+    allQuestions = data.questions || [];
+    document.getElementById('loadingState').style.display = 'none';
+    init();
+  } catch (err) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorBanner').classList.add('show');
+    console.error('Failed to load questions:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+function init() {
+  buildCategoryList();
+  buildFilteredList();
+  showQuestion(0);
+  document.getElementById('kbdHints').style.display = 'flex';
+  setupKeyboard();
+  updateStats();
+}
+
+// ─────────────────────────────────────────────
+// CATEGORY SIDEBAR
+// ─────────────────────────────────────────────
+function buildCategoryList() {
+  const list = document.getElementById('categoryList');
+  list.innerHTML = '';
+
+  Object.entries(categories).forEach(([key, cat]) => {
+    const count = allQuestions.filter(q => q.category === key).length;
+    const progress = getProgress();
+    const viewed = allQuestions.filter(q => q.category === key && progress.viewed && progress.viewed[q.id]).length;
+    const pct = count > 0 ? Math.round((viewed / count) * 100) : 0;
+
+    const item = document.createElement('div');
+    item.className = 'cat-item';
+    item.innerHTML = `
+      <input type="checkbox" id="cat-${key}" value="${key}" checked>
+      <span class="cat-icon">${cat.icon}</span>
+      <span class="cat-label" for="cat-${key}">${cat.label}</span>
+      <span class="cat-count">${viewed}/${count}</span>
+    `;
+    const progressBar = document.createElement('div');
+    progressBar.className = 'cat-progress';
+    progressBar.innerHTML = `<div class="cat-progress-fill" style="width:${pct}%;background:${cat.color}"></div>`;
+    list.appendChild(item);
+    list.appendChild(progressBar);
+
+    item.querySelector('input').addEventListener('change', () => {
+      buildFilteredList();
+      showQuestion(0);
+    });
+    item.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        const cb = item.querySelector('input');
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      }
+    });
+  });
+}
+
+function refreshCategoryProgress() {
+  const progress = getProgress();
+  Object.entries(categories).forEach(([key, cat]) => {
+    const count = allQuestions.filter(q => q.category === key).length;
+    const viewed = allQuestions.filter(q => q.category === key && progress.viewed && progress.viewed[q.id]).length;
+    const pct = count > 0 ? Math.round((viewed / count) * 100) : 0;
+    const cb = document.getElementById('cat-' + key);
+    if (!cb) return;
+    const item = cb.closest('.cat-item');
+    if (item) {
+      const cnt = item.querySelector('.cat-count');
+      if (cnt) cnt.textContent = `${viewed}/${count}`;
+      const next = item.nextElementSibling;
+      if (next && next.classList.contains('cat-progress')) {
+        const fill = next.querySelector('.cat-progress-fill');
+        if (fill) fill.style.width = pct + '%';
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+// FILTERING
+// ─────────────────────────────────────────────
+function buildFilteredList() {
+  const checkedCats = Array.from(document.querySelectorAll('#categoryList input[type=checkbox]:checked'))
+    .map(cb => cb.value);
+  const difficulty = document.getElementById('difficultyFilter').value;
+  const type = document.getElementById('typeFilter').value;
+
+  filteredQuestions = allQuestions.filter(q => {
+    if (!checkedCats.includes(q.category)) return false;
+    if (difficulty !== 'all' && q.difficulty !== difficulty) return false;
+    if (type !== 'all' && q.type !== type) return false;
+    return true;
+  });
+
+  currentIndex = 0;
+  updateNavBar();
+}
+
+// ─────────────────────────────────────────────
+// SHOW QUESTION
+// ─────────────────────────────────────────────
+function showQuestion(idx) {
+  currentIndex = Math.max(0, Math.min(idx, filteredQuestions.length - 1));
+
+  const questionCard = document.getElementById('questionCard');
+  const emptyState = document.getElementById('emptyState');
+  const navBar = document.getElementById('questionNavBar');
+
+  if (filteredQuestions.length === 0) {
+    questionCard.style.display = 'none';
+    emptyState.classList.add('show');
+    document.getElementById('codingSection').classList.remove('show');
+    return;
+  }
+
+  emptyState.classList.remove('show');
+  questionCard.style.display = 'block';
+  navBar.style.display = 'flex';
+
+  const q = filteredQuestions[currentIndex];
+
+  // Mark as viewed
+  markViewed(q.id);
+
+  // Badges
+  const cat = categories[q.category] || { label: q.category, icon: '❓', color: '#888' };
+  document.getElementById('qBadges').innerHTML = `
+    <span class="badge badge-category" style="border-color:${cat.color}33;background:${cat.color}15;color:${cat.color}">${cat.icon} ${cat.label}</span>
+    <span class="badge badge-difficulty-${q.difficulty}">${q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1)}</span>
+    <span class="badge badge-type">${q.type}</span>
+    <span class="badge badge-id">${q.id}</span>
+  `;
+
+  // Question text
+  document.getElementById('qText').textContent = q.question;
+
+  // Reset answer
+  const answerPanel = document.getElementById('answerPanel');
+  const showBtn = document.getElementById('showAnswerBtn');
+  answerPanel.classList.remove('show');
+  showBtn.classList.remove('revealed');
+  showBtn.textContent = '👁 Show Answer';
+  document.getElementById('answerContent').innerHTML = renderMarkdown(q.answer || '');
+
+  // Confidence stars
+  buildConfidenceStars(q.id);
+
+  // Coding section
+  const codingSection = document.getElementById('codingSection');
+  if (q.type === 'coding' && q.starterCode) {
+    codingSection.classList.add('show');
+    loadEditorCode(q.starterCode);
+    buildTestCases(q.testCases || []);
+    document.getElementById('outputPre').textContent = 'Run your code to see output…';
+    document.getElementById('outputPre').className = 'output-pre';
+  } else {
+    codingSection.classList.remove('show');
+  }
+
+  updateNavBar();
+  updateStats();
+  refreshCategoryProgress();
+}
+
+function updateNavBar() {
+  document.getElementById('qCounter').textContent =
+    filteredQuestions.length > 0
+      ? `Question ${currentIndex + 1} of ${filteredQuestions.length}`
+      : '';
+  document.getElementById('prevBtn').disabled = currentIndex <= 0;
+  document.getElementById('nextBtn').disabled = currentIndex >= filteredQuestions.length - 1;
+}
+
+// ─────────────────────────────────────────────
+// PROGRESS
+// ─────────────────────────────────────────────
+function getProgress() {
+  return storageGet('progress') || { viewed: {}, coding: {}, confidence: {} };
+}
+
+function saveProgress(p) {
+  storageSet('progress', p);
+}
+
+function markViewed(id) {
+  const p = getProgress();
+  if (!p.viewed) p.viewed = {};
+  p.viewed[id] = Date.now();
+  saveProgress(p);
+}
+
+function markCodingAttempted(id) {
+  const p = getProgress();
+  if (!p.coding) p.coding = {};
+  p.coding[id] = (p.coding[id] || 0) + 1;
+  saveProgress(p);
+}
+
+function setConfidence(id, rating) {
+  const p = getProgress();
+  if (!p.confidence) p.confidence = {};
+  p.confidence[id] = rating;
+  saveProgress(p);
+}
+
+function updateStats() {
+  const p = getProgress();
+  const totalViewed = Object.keys(p.viewed || {}).length;
+  const codingQs = allQuestions.filter(q => q.type === 'coding' && q.starterCode);
+  const codingAttempted = codingQs.filter(q => p.coding && p.coding[q.id]).length;
+  document.getElementById('statsBar').innerHTML =
+    `<strong>${totalViewed}</strong>/${allQuestions.length} reviewed<br><strong>${codingAttempted}</strong>/${codingQs.length} coding attempted`;
+}
+
+// ─────────────────────────────────────────────
+// CONFIDENCE STARS
+// ─────────────────────────────────────────────
+function buildConfidenceStars(qId) {
+  const p = getProgress();
+  const rating = (p.confidence || {})[qId] || 0;
+  const container = document.getElementById('confidenceStars');
+  container.innerHTML = '';
+  for (let i = 1; i <= 5; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'star-btn' + (i <= rating ? ' active' : '');
+    btn.textContent = '⭐';
+    btn.title = `${i} star${i>1?'s':''}`;
+    btn.addEventListener('click', () => {
+      setConfidence(qId, i);
+      buildConfidenceStars(qId);
+    });
+    container.appendChild(btn);
+  }
+}
+
+// ─────────────────────────────────────────────
+// TEST CASES
+// ─────────────────────────────────────────────
+function buildTestCases(testCases) {
+  const container = document.getElementById('testCases');
+  container.innerHTML = '';
+  if (!testCases || testCases.length === 0) return;
+  testCases.forEach((tc, i) => {
+    const row = document.createElement('div');
+    row.className = 'test-case-row';
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <span class="tc-icon">⬜</span>
+      <span class="tc-desc">${escapeHtml(tc.description || 'Test ' + (i+1))}</span>
+      <span class="tc-expected">→ ${escapeHtml(String(tc.expected || ''))}</span>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function updateTestCaseResults(stdout, testCases) {
+  if (!testCases || testCases.length === 0) return;
+  const lines = (stdout || '').split('\n');
+  const rows = document.querySelectorAll('.test-case-row');
+  testCases.forEach((tc, i) => {
+    if (!rows[i]) return;
+    const expected = String(tc.expected || '').trim();
+    const pass = lines.some(l => l.includes(expected));
+    rows[i].className = 'test-case-row ' + (pass ? 'pass' : 'fail');
+    rows[i].querySelector('.tc-icon').textContent = pass ? '✅' : '❌';
+  });
+}
+
+// ─────────────────────────────────────────────
+// MONACO EDITOR
+// ─────────────────────────────────────────────
+let monacoLoaded = false;
+let VimLib = null;
+
+function initMonaco(cb) {
+  if (monacoLoaded) { cb && cb(); return; }
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+  require(['vs/editor/editor.main'], function() {
+    monacoLoaded = true;
+    // Load monaco-vim
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/monaco-vim@0.4.1/dist/monaco-vim.js';
+    script.onload = () => {
+      VimLib = window.MonacoVim;
+      cb && cb();
+    };
+    script.onerror = () => { cb && cb(); }; // vim optional
+    document.head.appendChild(script);
+  });
+}
+
+function setupEditor(code) {
+  if (!monacoLoaded || !window.monaco) return;
+
+  const container = document.getElementById('editor-container');
+  if (!container) return;
+
+  if (monacoEditor) {
+    monacoEditor.setValue(code);
+    return;
+  }
+
+  monacoEditor = monaco.editor.create(container, {
+    value: code,
+    language: 'c',
+    theme: 'vs-dark',
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: "'SF Mono', Consolas, 'Courier New', monospace",
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    tabSize: 4,
+    insertSpaces: true,
+    wordWrap: 'on',
+  });
+
+  // Apply vim mode based on toggle state
+  applyVimMode(vimModeEnabled);
+}
+
+function applyVimMode(enable) {
+  if (!monacoEditor) return;
+  if (enable && VimLib && !vimMode) {
+    vimMode = VimLib.initVimMode(monacoEditor, document.getElementById('vim-status-bar'));
+  } else if (!enable && vimMode) {
+    vimMode.dispose();
+    vimMode = null;
+  }
+}
+
+function loadEditorCode(code) {
+  if (!monacoLoaded) {
+    initMonaco(() => setupEditor(code));
+  } else if (!monacoEditor) {
+    setupEditor(code);
+  } else {
+    monacoEditor.setValue(code);
+  }
+}
+
+// ─────────────────────────────────────────────
+// VIM TOGGLE
+// ─────────────────────────────────────────────
+document.getElementById('vimToggle').addEventListener('change', (e) => {
+  vimModeEnabled = e.target.checked;
+  applyVimMode(vimModeEnabled);
+});
+
+// ─────────────────────────────────────────────
+// RUN CODE (Judge0 CE)
+// ─────────────────────────────────────────────
+document.getElementById('runCodeBtn').addEventListener('click', async () => {
+  if (!monacoEditor) return;
+  const q = filteredQuestions[currentIndex];
+  const code = monacoEditor.getValue();
+  const output = document.getElementById('outputPre');
+  const runBtn = document.getElementById('runCodeBtn');
+
+  runBtn.disabled = true;
+  output.className = 'output-pre';
+  output.innerHTML = '<span class="spinner"></span>Compiling…';
+
+  if (q && q.id) markCodingAttempted(q.id);
+  updateStats();
+
+  try {
+    const res = await fetch('https://ce.judge0.com/submissions?base64_encoded=false&wait=true', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_code: code,
+        language_id: 50, // C (GCC 9.2.0)
+      }),
+    });
+
+    if (!res.ok) throw new Error('Judge0 API returned ' + res.status);
+    const data = await res.json();
+
+    const stdout = data.stdout || '';
+    const stderr = data.stderr || '';
+    const compileOut = data.compile_output || '';
+    const status = (data.status && data.status.description) || 'Unknown';
+
+    let out = '';
+    let hasError = false;
+
+    if (compileOut) {
+      out += '── Compile Output ──\n' + compileOut.trim() + '\n\n';
+      hasError = true;
+    }
+    if (stderr) {
+      out += '── stderr ──\n' + stderr.trim() + '\n\n';
+      hasError = true;
+    }
+    if (stdout) {
+      out += stdout;
+    }
+    if (!out) {
+      out = '[No output]\nStatus: ' + status;
+    }
+
+    output.textContent = out.trim();
+    output.className = 'output-pre' + (hasError ? ' has-error' : (stdout ? ' has-success' : ''));
+
+    // Update test cases
+    if (q && q.testCases) {
+      updateTestCaseResults(stdout, q.testCases);
+    }
+
+  } catch (err) {
+    output.textContent = '⚠ Error: ' + err.message + '\n\nThe Judge0 CE API may be unavailable. Check https://ce.judge0.com/ for status.';
+    output.className = 'output-pre has-error';
+  } finally {
+    runBtn.disabled = false;
+  }
+});
+
+// ─────────────────────────────────────────────
+// RESET CODE
+// ─────────────────────────────────────────────
+document.getElementById('resetCodeBtn').addEventListener('click', () => {
+  const q = filteredQuestions[currentIndex];
+  if (q && q.starterCode && monacoEditor) {
+    monacoEditor.setValue(q.starterCode);
+  }
+});
+
+// ─────────────────────────────────────────────
+// ANSWER TOGGLE
+// ─────────────────────────────────────────────
+document.getElementById('showAnswerBtn').addEventListener('click', () => {
+  toggleAnswer();
+});
+
+function toggleAnswer() {
+  const panel = document.getElementById('answerPanel');
+  const btn = document.getElementById('showAnswerBtn');
+  const shown = panel.classList.contains('show');
+  if (shown) {
+    panel.classList.remove('show');
+    btn.classList.remove('revealed');
+    btn.textContent = '👁 Show Answer';
+  } else {
+    panel.classList.add('show');
+    btn.classList.add('revealed');
+    btn.textContent = '🙈 Hide Answer';
+  }
+}
+
+// ─────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────
+document.getElementById('prevBtn').addEventListener('click', () => {
+  if (currentIndex > 0) showQuestion(currentIndex - 1);
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if (currentIndex < filteredQuestions.length - 1) showQuestion(currentIndex + 1);
+});
+document.getElementById('randomBtn').addEventListener('click', randomQuestion);
+
+function randomQuestion() {
+  if (filteredQuestions.length === 0) return;
+  let next = Math.floor(Math.random() * filteredQuestions.length);
+  if (filteredQuestions.length > 1 && next === currentIndex) {
+    next = (next + 1) % filteredQuestions.length;
+  }
+  showQuestion(next);
+}
+
+// ─────────────────────────────────────────────
+// KEYBOARD SHORTCUTS
+// ─────────────────────────────────────────────
+function setupKeyboard() {
+  document.addEventListener('keydown', (e) => {
+    // Don't steal keys when typing in editor or input
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.target.classList.contains('inputarea')) return; // monaco
+    if (monacoEditor && monacoEditor.hasWidgetFocus && monacoEditor.hasWidgetFocus()) return;
+
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        toggleAnswer();
+        break;
+      case 'n': case 'N':
+        if (currentIndex < filteredQuestions.length - 1) showQuestion(currentIndex + 1);
+        break;
+      case 'p': case 'P':
+        if (currentIndex > 0) showQuestion(currentIndex - 1);
+        break;
+      case 'r': case 'R':
+        randomQuestion();
+        break;
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+// FILTER EVENTS
+// ─────────────────────────────────────────────
+document.getElementById('difficultyFilter').addEventListener('change', () => {
+  buildFilteredList();
+  showQuestion(0);
+});
+document.getElementById('typeFilter').addEventListener('change', () => {
+  buildFilteredList();
+  showQuestion(0);
+});
+
+// ─────────────────────────────────────────────
+// TIMER
+// ─────────────────────────────────────────────
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function updateTimerDisplay() {
+  const disp = document.getElementById('timerDisplay');
+  const bar = document.getElementById('timerBar');
+  disp.textContent = timerRunning || timerSeconds < timerDuration
+    ? formatTime(timerSeconds)
+    : formatTime(timerDuration);
+
+  const pct = timerDuration > 0 ? (timerSeconds / timerDuration) * 100 : 100;
+  bar.style.width = pct + '%';
+
+  disp.className = 'timer-display';
+  if (timerRunning) {
+    if (pct > 50) {
+      disp.classList.add('running');
+      bar.style.background = 'var(--success)';
+    } else if (pct > 20) {
+      disp.classList.add('warn');
+      bar.style.background = 'var(--warning)';
+    } else {
+      disp.classList.add('urgent');
+      bar.style.background = 'var(--error)';
+    }
+  }
+}
+
+document.querySelectorAll('.timer-preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.timer-preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    timerDuration = parseInt(btn.dataset.min) * 60;
+    if (timerRunning) stopTimer();
+    timerSeconds = timerDuration;
+    updateTimerDisplay();
+  });
+});
+
+document.getElementById('timerToggleBtn').addEventListener('click', () => {
+  if (timerRunning) stopTimer();
+  else startTimer();
+});
+
+function startTimer() {
+  timerSeconds = timerDuration;
+  timerRunning = true;
+  document.getElementById('timerToggleBtn').textContent = '⏹ Stop Timer';
+  document.getElementById('timerToggleBtn').classList.add('running');
+  updateTimerDisplay();
+  timerInterval = setInterval(() => {
+    if (timerSeconds <= 0) { stopTimer(); return; }
+    timerSeconds--;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function stopTimer() {
+  timerRunning = false;
+  clearInterval(timerInterval);
+  document.getElementById('timerToggleBtn').textContent = '▶ Start Timer';
+  document.getElementById('timerToggleBtn').classList.remove('running');
+  document.getElementById('timerDisplay').className = 'timer-display';
+  document.getElementById('timerBar').style.background = 'var(--success)';
+}
+
+// ─────────────────────────────────────────────
+// CLEAR PROGRESS
+// ─────────────────────────────────────────────
+document.getElementById('clearProgressBtn').addEventListener('click', () => {
+  if (confirm('Clear all progress? This cannot be undone.')) {
+    storageSet('progress', { viewed: {}, coding: {}, confidence: {} });
+    buildCategoryList();
+    updateStats();
+    showQuestion(currentIndex);
+  }
+});
+
+// ─────────────────────────────────────────────
+// MOBILE SIDEBAR TOGGLE
+// ─────────────────────────────────────────────
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('sidebarOverlay');
+
+document.getElementById('hamburger').addEventListener('click', () => {
+  const open = sidebar.classList.toggle('open');
+  overlay.classList.toggle('show', open);
+});
+overlay.addEventListener('click', () => {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('show');
+});
+
+// ─────────────────────────────────────────────
+// BOOTSTRAP
+// ─────────────────────────────────────────────
+// Init Monaco eagerly so it's ready when coding questions appear
+initMonaco(() => {
+  // Monaco loaded; editor will be created on demand
+});
+
+// Load questions
+loadQuestions();
+</script>
+
+<!-- Vim status bar (optional, hidden by default) -->
+<div id="vim-status-bar" style="display:none;font-family:monospace;font-size:11px;padding:2px 8px;background:#1e1e1e;color:#888;border-top:1px solid #333;"></div>
+
+</body>
+</html>
