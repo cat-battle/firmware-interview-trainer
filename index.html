@@ -1059,7 +1059,7 @@ document.getElementById('vimToggle').addEventListener('change', (e) => {
 });
 
 // ─────────────────────────────────────────────
-// RUN CODE (Judge0 CE)
+// RUN CODE (Wandbox — free, CORS-open GCC API)
 // ─────────────────────────────────────────────
 document.getElementById('runCodeBtn').addEventListener('click', async () => {
   if (!monacoEditor) return;
@@ -1076,39 +1076,36 @@ document.getElementById('runCodeBtn').addEventListener('click', async () => {
   updateStats();
 
   try {
-    const res = await fetch('https://ce.judge0.com/submissions?base64_encoded=false&wait=true', {
+    const res = await fetch('https://wandbox.org/api/compile.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        source_code: code,
-        language_id: 50, // C (GCC 9.2.0)
+        compiler: 'gcc-head-c',
+        code: code,
+        options: '-Wall -Wextra',
+        'compiler-option-raw': '-std=c11',
       }),
     });
 
-    if (!res.ok) throw new Error('Judge0 API returned ' + res.status);
+    if (!res.ok) throw new Error('Compiler API returned ' + res.status);
     const data = await res.json();
 
-    const stdout = data.stdout || '';
-    const stderr = data.stderr || '';
-    const compileOut = data.compile_output || '';
-    const status = (data.status && data.status.description) || 'Unknown';
+    const stdout = data.program_output || '';
+    const compileErr = data.compiler_error || '';
+    const status = data.status;
 
     let out = '';
     let hasError = false;
 
-    if (compileOut) {
-      out += '── Compile Output ──\n' + compileOut.trim() + '\n\n';
-      hasError = true;
-    }
-    if (stderr) {
-      out += '── stderr ──\n' + stderr.trim() + '\n\n';
+    if (compileErr) {
+      out += '── Compile Error ──\n' + compileErr.trim() + '\n\n';
       hasError = true;
     }
     if (stdout) {
       out += stdout;
     }
-    if (!out) {
-      out = '[No output]\nStatus: ' + status;
+    if (!out && !hasError) {
+      out = '[No output] — Exit status: ' + (status || '0');
     }
 
     output.textContent = out.trim();
@@ -1120,7 +1117,7 @@ document.getElementById('runCodeBtn').addEventListener('click', async () => {
     }
 
   } catch (err) {
-    output.textContent = '⚠ Error: ' + err.message + '\n\nThe Judge0 CE API may be unavailable. Check https://ce.judge0.com/ for status.';
+    output.textContent = '⚠ Error: ' + err.message + '\n\nThe Wandbox compiler API may be unavailable. Try again shortly.';
     output.className = 'output-pre has-error';
   } finally {
     runBtn.disabled = false;
