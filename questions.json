@@ -1,0 +1,349 @@
+{
+  "categories": {
+    "c-fundamentals": {
+      "label": "C Language Deep Cuts",
+      "icon": "\ud83d\udd24",
+      "color": "#e06c75"
+    },
+    "bit-manipulation": {
+      "label": "Bit Manipulation & Registers",
+      "icon": "\ud83d\udd27",
+      "color": "#e5c07b"
+    },
+    "concurrency": {
+      "label": "Concurrency & RTOS",
+      "icon": "\ud83d\udd04",
+      "color": "#61afef"
+    },
+    "interrupts": {
+      "label": "Interrupts & ISR Design",
+      "icon": "\u26a1",
+      "color": "#c678dd"
+    },
+    "memory": {
+      "label": "Memory & Storage",
+      "icon": "\ud83d\udcbe",
+      "color": "#56b6c2"
+    },
+    "system-design": {
+      "label": "System Design",
+      "icon": "\ud83c\udfd7\ufe0f",
+      "color": "#98c379"
+    },
+    "debugging": {
+      "label": "Debugging Scenarios",
+      "icon": "\ud83d\udc1b",
+      "color": "#d19a66"
+    },
+    "protocols": {
+      "label": "Protocols & Interfaces",
+      "icon": "\ud83d\udd0c",
+      "color": "#528bff"
+    }
+  },
+  "questions": [
+    {
+      "id": "c-001",
+      "category": "c-fundamentals",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "What does the `volatile` keyword do in C, and when would you use it in embedded firmware?",
+      "answer": "The `volatile` keyword tells the compiler that a variable's value may change at any time without any action being taken by the code the compiler finds nearby. This prevents the compiler from optimizing away reads/writes to that variable.\n\n**Use cases in firmware:**\n1. **Memory-mapped hardware registers** \u2014 the hardware can change the register value independently\n2. **Variables modified by an ISR** \u2014 the ISR runs asynchronously and modifies shared state\n3. **Variables shared between threads/tasks** in a multi-threaded RTOS environment\n4. **DMA buffers** \u2014 DMA controller writes to memory independently of the CPU\n\n**Common mistake:** Using `volatile` as a synchronization primitive. It prevents compiler reordering but does NOT prevent CPU reordering or provide atomicity. You still need mutexes/memory barriers for proper synchronization.\n\n**Example:**\n```c\n// Hardware register\n#define STATUS_REG (*(volatile uint32_t *)0x40001000)\n\n// ISR-shared variable\nvolatile bool data_ready = false;\n```"
+    },
+    {
+      "id": "c-002",
+      "category": "c-fundamentals",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain the difference between `const volatile`, `volatile const`, and when you'd use them in firmware.",
+      "answer": "`const volatile` and `volatile const` are identical \u2014 both mean the variable is read-only from the program's perspective but may change externally.\n\n**Use case:** Reading a hardware status register. Your code shouldn't write to it (`const`), but the hardware updates it (`volatile`), so the compiler must re-read it each time.\n\n```c\n// Read-only hardware status register\nconst volatile uint32_t *status = (const volatile uint32_t *)0x40001004;\n\n// Each read hits the actual register, not a cached value\nwhile (!(*status & READY_BIT)) { /* spin */ }\n```\n\n**Why both?** Without `volatile`, the compiler might read the register once and cache the value \u2014 your spin loop becomes infinite. Without `const`, nothing stops a developer from accidentally writing to a read-only register, potentially causing undefined hardware behavior."
+    },
+    {
+      "id": "c-003",
+      "category": "c-fundamentals",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Write a macro to get the offset of a member within a struct (implement `offsetof`).",
+      "answer": "```c\n#define OFFSETOF(type, member) ((size_t)&((type *)0)->member)\n\n// Usage:\nstruct Example {\n    uint8_t  a;    // offset 0\n    uint32_t b;    // offset 4 (with padding)\n    uint16_t c;    // offset 8\n};\n\nsize_t off_b = OFFSETOF(struct Example, b); // Returns 4\n```\n\n**How it works:**\n1. Cast `0` to a pointer of the struct type\n2. Access the member via `->`\n3. Take the address with `&`\n4. Cast to `size_t` \u2014 since the base is 0, the address IS the offset\n\n**Follow-up:** This is technically undefined behavior in strict C (dereferencing a null pointer), but every compiler supports it. The standard `offsetof` in `<stddef.h>` uses compiler built-ins instead.",
+      "starterCode": "#include <stdint.h>\n#include <stdio.h>\n\n// Implement OFFSETOF macro here\n#define OFFSETOF(type, member) /* your implementation */\n\nstruct Packet {\n    uint8_t  header;\n    uint32_t payload;\n    uint16_t checksum;\n};\n\nint main() {\n    printf(\"header offset: %zu\\n\", OFFSETOF(struct Packet, header));\n    printf(\"payload offset: %zu\\n\", OFFSETOF(struct Packet, payload));\n    printf(\"checksum offset: %zu\\n\", OFFSETOF(struct Packet, checksum));\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "header at offset 0",
+          "expected": "header offset: 0"
+        },
+        {
+          "description": "payload at offset 4 (with padding)",
+          "expected": "payload offset: 4"
+        },
+        {
+          "description": "checksum at offset 8",
+          "expected": "checksum offset: 8"
+        }
+      ]
+    },
+    {
+      "id": "c-004",
+      "category": "c-fundamentals",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "What is struct packing/alignment? Write code to demonstrate the difference between a packed and unpacked struct, and explain when you'd use each in firmware.",
+      "answer": "Compilers add padding bytes to align struct members to their natural boundaries (e.g., a `uint32_t` aligns to a 4-byte boundary). This improves CPU access speed but wastes memory.\n\n```c\n#include <stdio.h>\n#include <stdint.h>\n\n// Normal struct \u2014 compiler adds padding\nstruct Unpacked {\n    uint8_t  a;  // 1 byte + 3 padding\n    uint32_t b;  // 4 bytes\n    uint8_t  c;  // 1 byte + 3 padding\n}; // Total: 12 bytes\n\n// Packed struct \u2014 no padding\nstruct __attribute__((packed)) Packed {\n    uint8_t  a;  // 1 byte\n    uint32_t b;  // 4 bytes (possibly unaligned!)\n    uint8_t  c;  // 1 byte\n}; // Total: 6 bytes\n\nint main() {\n    printf(\"Unpacked: %zu bytes\\n\", sizeof(struct Unpacked)); // 12\n    printf(\"Packed:   %zu bytes\\n\", sizeof(struct Packed));   // 6\n    return 0;\n}\n```\n\n**When to pack:** Wire protocols, file formats, hardware register maps \u2014 anywhere the struct layout must match an external binary format.\n\n**Danger:** Unaligned access. On ARM Cortex-M, unaligned 32-bit reads may fault or silently corrupt data depending on the core. Use `memcpy` or byte-level access for safety.",
+      "starterCode": "#include <stdio.h>\n#include <stdint.h>\n\n// Define both packed and unpacked versions of this struct:\n// Members: uint8_t type, uint32_t id, uint8_t flags, uint16_t length\n\nint main() {\n    // Print sizes of both structs\n    // Explain the difference\n    return 0;\n}"
+    },
+    {
+      "id": "c-005",
+      "category": "c-fundamentals",
+      "difficulty": "easy",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "What is the difference between `static` at file scope vs. function scope in C?",
+      "answer": "**File scope `static`:** Limits visibility to the current translation unit (source file). It's C's version of \"private\" \u2014 the function or variable can't be accessed from other files, even with `extern`.\n\n```c\n// file: uart.c\nstatic uint8_t rx_buffer[256]; // Only visible in uart.c\nstatic void parse_frame(void); // Only callable from uart.c\n```\n\n**Function scope `static`:** The variable persists across function calls (stored in `.bss`/`.data`, not on the stack). Initialized only once.\n\n```c\nvoid count_calls(void) {\n    static int count = 0; // Initialized once, persists\n    count++;\n    printf(\"Called %d times\\n\", count);\n}\n```\n\n**Firmware relevance:**\n- File-scope `static` is essential for encapsulation in C (no classes/namespaces)\n- Function-scope `static` is useful for state machines, counters, one-time init\n- **Watch out:** Function-scope `static` is NOT thread-safe \u2014 two RTOS tasks calling the same function share that variable"
+    },
+    {
+      "id": "bit-001",
+      "category": "bit-manipulation",
+      "difficulty": "easy",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Write functions to set, clear, toggle, and check a specific bit in a 32-bit register.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\nstatic inline void reg_set_bit(volatile uint32_t *reg, uint8_t bit) {\n    *reg |= (1U << bit);\n}\n\nstatic inline void reg_clear_bit(volatile uint32_t *reg, uint8_t bit) {\n    *reg &= ~(1U << bit);\n}\n\nstatic inline void reg_toggle_bit(volatile uint32_t *reg, uint8_t bit) {\n    *reg ^= (1U << bit);\n}\n\nstatic inline bool reg_check_bit(volatile uint32_t *reg, uint8_t bit) {\n    return (*reg & (1U << bit)) != 0;\n}\n```\n\n**Key points:**\n- Use `1U` (unsigned) to avoid undefined behavior when shifting into the sign bit\n- `volatile` because these typically operate on hardware registers\n- `static inline` for zero-overhead in headers\n- Real codebases often use macros: `#define BIT(n) (1U << (n))`",
+      "starterCode": "#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n\n// Implement these four functions:\nvoid reg_set_bit(volatile uint32_t *reg, uint8_t bit) {\n    // Set bit N in register\n}\n\nvoid reg_clear_bit(volatile uint32_t *reg, uint8_t bit) {\n    // Clear bit N in register\n}\n\nvoid reg_toggle_bit(volatile uint32_t *reg, uint8_t bit) {\n    // Toggle bit N in register\n}\n\nbool reg_check_bit(volatile uint32_t *reg, uint8_t bit) {\n    // Return true if bit N is set\n    return false;\n}\n\nint main() {\n    uint32_t reg = 0x00000000;\n    \n    reg_set_bit(&reg, 3);\n    printf(\"After set bit 3: 0x%08X\\n\", reg);\n    \n    reg_set_bit(&reg, 7);\n    printf(\"After set bit 7: 0x%08X\\n\", reg);\n    \n    reg_clear_bit(&reg, 3);\n    printf(\"After clear bit 3: 0x%08X\\n\", reg);\n    \n    reg_toggle_bit(&reg, 7);\n    printf(\"After toggle bit 7: 0x%08X\\n\", reg);\n    \n    printf(\"Bit 3 set? %s\\n\", reg_check_bit(&reg, 3) ? \"yes\" : \"no\");\n    printf(\"Bit 7 set? %s\\n\", reg_check_bit(&reg, 7) ? \"yes\" : \"no\");\n    \n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Set bit 3",
+          "expected": "After set bit 3: 0x00000008"
+        },
+        {
+          "description": "Set bit 7",
+          "expected": "After set bit 7: 0x00000088"
+        },
+        {
+          "description": "Clear bit 3",
+          "expected": "After clear bit 3: 0x00000080"
+        },
+        {
+          "description": "Toggle bit 7 off",
+          "expected": "After toggle bit 7: 0x00000000"
+        }
+      ]
+    },
+    {
+      "id": "bit-002",
+      "category": "bit-manipulation",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Write a function to extract a bit field from a 32-bit register given a starting bit position and width. For example, extract bits [7:4] from a register value.",
+      "answer": "```c\nuint32_t extract_field(uint32_t reg, uint8_t start, uint8_t width) {\n    uint32_t mask = (1U << width) - 1;\n    return (reg >> start) & mask;\n}\n\n// Usage:\nuint32_t val = 0xDEADBEEF;\nuint32_t nibble = extract_field(val, 4, 4); // bits [7:4] = 0xE\n```\n\n**Why this matters:** Hardware registers pack multiple fields into a single register. A UART status register might have bits [1:0] for parity mode, bit 2 for stop bits, bits [5:3] for baud rate divisor, etc. You extract and insert fields constantly in firmware.",
+      "starterCode": "#include <stdint.h>\n#include <stdio.h>\n\n// Extract 'width' bits starting at bit position 'start'\nuint32_t extract_field(uint32_t reg, uint8_t start, uint8_t width) {\n    // Your implementation\n    return 0;\n}\n\n// Insert 'value' into 'width' bits starting at bit position 'start'\nuint32_t insert_field(uint32_t reg, uint8_t start, uint8_t width, uint32_t value) {\n    // Your implementation\n    return 0;\n}\n\nint main() {\n    uint32_t reg = 0xDEADBEEF;\n    \n    printf(\"Bits [7:4] of 0x%08X = 0x%X\\n\", reg, extract_field(reg, 4, 4));\n    printf(\"Bits [15:8] of 0x%08X = 0x%02X\\n\", reg, extract_field(reg, 8, 8));\n    \n    uint32_t modified = insert_field(reg, 4, 4, 0xA);\n    printf(\"Insert 0xA at [7:4]: 0x%08X\\n\", modified);\n    \n    return 0;\n}"
+    },
+    {
+      "id": "bit-003",
+      "category": "bit-manipulation",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a circular/ring buffer for a UART receive path. It should handle producer (ISR) and consumer (main loop) without locks.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\n#define RING_SIZE 256  // Must be power of 2\n#define RING_MASK (RING_SIZE - 1)\n\ntypedef struct {\n    volatile uint8_t buffer[RING_SIZE];\n    volatile uint32_t head;  // Written by producer (ISR)\n    volatile uint32_t tail;  // Written by consumer (main)\n} RingBuffer;\n\nvoid ring_init(RingBuffer *rb) {\n    rb->head = 0;\n    rb->tail = 0;\n}\n\n// Called from ISR \u2014 adds a byte\nbool ring_put(RingBuffer *rb, uint8_t byte) {\n    uint32_t next = (rb->head + 1) & RING_MASK;\n    if (next == rb->tail) return false;  // Full\n    rb->buffer[rb->head] = byte;\n    rb->head = next;\n    return true;\n}\n\n// Called from main loop \u2014 gets a byte\nbool ring_get(RingBuffer *rb, uint8_t *byte) {\n    if (rb->head == rb->tail) return false;  // Empty\n    *byte = rb->buffer[rb->tail];\n    rb->tail = (rb->tail + 1) & RING_MASK;\n    return true;\n}\n\nbool ring_empty(RingBuffer *rb) {\n    return rb->head == rb->tail;\n}\n```\n\n**Key design decisions:**\n- Power-of-2 size enables `& MASK` instead of `% SIZE` (faster, no division)\n- Single producer, single consumer \u2014 no lock needed (each side only writes its own index)\n- `volatile` on head/tail because ISR and main loop access them\n- Wastes one slot to distinguish full from empty (alternative: keep a count, but that requires atomic ops)",
+      "starterCode": "#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n\n#define RING_SIZE 16  // Must be power of 2\n\ntypedef struct {\n    uint8_t buffer[RING_SIZE];\n    uint32_t head;\n    uint32_t tail;\n} RingBuffer;\n\nvoid ring_init(RingBuffer *rb) {\n    // Initialize\n}\n\nbool ring_put(RingBuffer *rb, uint8_t byte) {\n    // Add byte, return false if full\n    return false;\n}\n\nbool ring_get(RingBuffer *rb, uint8_t *byte) {\n    // Get byte, return false if empty\n    return false;\n}\n\nbool ring_empty(RingBuffer *rb) {\n    return true;\n}\n\nuint32_t ring_count(RingBuffer *rb) {\n    return 0;\n}\n\nint main() {\n    RingBuffer rb;\n    ring_init(&rb);\n    \n    // Test basic put/get\n    ring_put(&rb, 'H');\n    ring_put(&rb, 'i');\n    \n    uint8_t ch;\n    ring_get(&rb, &ch); printf(\"%c\", ch);\n    ring_get(&rb, &ch); printf(\"%c\", ch);\n    printf(\"\\n\");\n    \n    // Test full condition\n    for (int i = 0; i < RING_SIZE; i++) ring_put(&rb, 'A' + i);\n    printf(\"Full? %s\\n\", ring_put(&rb, 'X') ? \"no\" : \"yes\");\n    \n    // Drain\n    while (ring_get(&rb, &ch)) printf(\"%c\", ch);\n    printf(\"\\nEmpty? %s\\n\", ring_empty(&rb) ? \"yes\" : \"no\");\n    \n    return 0;\n}"
+    },
+    {
+      "id": "conc-001",
+      "category": "concurrency",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain priority inversion and how you'd prevent it in an RTOS-based firmware system.",
+      "answer": "**Priority inversion** occurs when a high-priority task is blocked waiting for a resource held by a low-priority task, while a medium-priority task preempts the low-priority task \u2014 effectively inverting the priority order.\n\n**Classic example:**\n1. Low-priority task (L) acquires mutex M\n2. High-priority task (H) wakes up, tries to acquire M \u2014 blocks\n3. Medium-priority task (M) preempts L and runs\n4. H is now waiting on L, which is waiting on M \u2014 H effectively runs at lower priority than M\n\n**Solutions:**\n\n1. **Priority Inheritance** (most common): When H blocks on M held by L, the RTOS temporarily raises L's priority to match H. L can't be preempted by M, finishes quickly, releases the mutex, and H runs. ThreadX, FreeRTOS, and most RTOSes support this.\n\n2. **Priority Ceiling**: Mutex is assigned the priority of the highest-priority task that will ever use it. Any task holding the mutex runs at that ceiling priority. Prevents the inversion entirely but requires knowing all users at design time.\n\n3. **Avoid shared resources**: Lock-free designs (message queues, ring buffers) eliminate the problem entirely.\n\n**Real-world incident:** The Mars Pathfinder (1997) experienced priority inversion that caused repeated system resets. Fixed by enabling priority inheritance on the mutex via a C parameter change \u2014 uploaded to Mars remotely."
+    },
+    {
+      "id": "conc-002",
+      "category": "concurrency",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "What is a deadlock? What are the four conditions required for deadlock, and how do you prevent them in firmware?",
+      "answer": "A **deadlock** occurs when two or more tasks are each waiting for a resource held by another, creating a circular wait where none can proceed.\n\n**Four necessary conditions (Coffman conditions):**\n1. **Mutual exclusion** \u2014 resources can't be shared simultaneously\n2. **Hold and wait** \u2014 a task holds one resource while waiting for another\n3. **No preemption** \u2014 resources can't be forcibly taken from a task\n4. **Circular wait** \u2014 Task A waits for Task B's resource, Task B waits for Task A's\n\n**Prevention strategies in firmware:**\n\n1. **Lock ordering** \u2014 Always acquire mutexes in a consistent global order. If every task acquires mutex A before mutex B, circular wait is impossible.\n\n2. **Try-lock with timeout** \u2014 Use `mutex_trylock()` with a timeout instead of blocking forever. If you can't get the second lock, release the first and retry.\n\n3. **Minimize lock scope** \u2014 Hold locks for the shortest time possible. Acquire late, release early.\n\n4. **Design it out** \u2014 Use message passing instead of shared memory. One task owns each resource. No locks, no deadlock.\n\n5. **Lock-free data structures** \u2014 Ring buffers, atomic operations, compare-and-swap for simple shared state.\n\n**In firmware specifically:** Deadlocks are catastrophic because there's often no user to kill a hung process. Watchdog timers are your last line of defense \u2014 they'll reset the system if the main loop stops running."
+    },
+    {
+      "id": "conc-003",
+      "category": "concurrency",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Compare mutexes vs. semaphores. When would you use each in an RTOS firmware system?",
+      "answer": "**Mutex (Mutual Exclusion):**\n- Binary lock \u2014 owned by one task at a time\n- Has **ownership**: only the task that locked it can unlock it\n- Supports **priority inheritance** (prevents priority inversion)\n- Use for: protecting shared resources (buffers, hardware peripherals, global state)\n\n**Semaphore (Counting or Binary):**\n- Counter-based signaling mechanism\n- **No ownership**: any task can post/signal\n- No priority inheritance\n- Use for: signaling events, rate limiting, producer-consumer coordination\n\n**When to use which:**\n\n| Scenario | Use |\n|---|---|\n| Protect shared UART TX buffer | Mutex |\n| ISR signals data ready to task | Binary semaphore |\n| Limit concurrent DMA channels | Counting semaphore |\n| Protect SPI bus access | Mutex |\n| Sync startup sequence | Semaphore |\n\n**Common mistake:** Using a binary semaphore as a mutex. It works superficially, but you lose ownership tracking and priority inheritance. If Task A \"locks\" a semaphore and Task B \"unlocks\" it, you have a bug that's nearly impossible to find.\n\n**ThreadX specifics:** `tx_mutex_get/put` for mutexes, `tx_semaphore_get/put` for semaphores. ThreadX mutexes support priority inheritance by default."
+    },
+    {
+      "id": "int-001",
+      "category": "interrupts",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "What are the key rules for writing a good ISR (Interrupt Service Routine)? What should and shouldn't you do inside one?",
+      "answer": "**Golden rules for ISRs:**\n\n1. **Keep it SHORT** \u2014 do the minimum work, defer the rest\n2. **No blocking calls** \u2014 never wait on a mutex, semaphore, or sleep\n3. **No dynamic memory** \u2014 no malloc/free (they use locks internally)\n4. **No printf/logging** \u2014 it's slow and often not reentrant\n5. **Use volatile for shared variables** \u2014 compiler must re-read each time\n\n**The pattern:**\n```c\n// ISR \u2014 runs in interrupt context\nvoid UART_RX_ISR(void) {\n    uint8_t byte = UART->DR;          // Read data register (clears interrupt)\n    ring_put(&rx_ring, byte);          // Store in lock-free ring buffer\n    tx_semaphore_put(&rx_semaphore);   // Signal waiting task\n}\n\n// Task \u2014 runs in thread context\nvoid uart_task(void) {\n    while (1) {\n        tx_semaphore_get(&rx_semaphore, TX_WAIT_FOREVER);\n        uint8_t byte;\n        while (ring_get(&rx_ring, &byte)) {\n            process_byte(byte);  // Heavy processing here, not in ISR\n        }\n    }\n}\n```\n\n**Why short ISRs matter:**\n- While your ISR runs, equal/lower priority interrupts are blocked\n- Long ISRs increase interrupt latency for everything else\n- In safety-critical systems (SEL), missing a timing deadline can be catastrophic\n\n**Nested interrupts:** Some systems (Cortex-M NVIC) support nested interrupts \u2014 a higher priority ISR can preempt a lower one. This helps latency but adds complexity (stack depth, reentrancy)."
+    },
+    {
+      "id": "int-002",
+      "category": "interrupts",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain the ARM Cortex-M NVIC (Nested Vectored Interrupt Controller). How does priority work, and what is tail-chaining?",
+      "answer": "**NVIC key features:**\n\n1. **Vectored** \u2014 each interrupt has a dedicated handler address in the vector table (no polling needed)\n2. **Nested** \u2014 higher priority interrupts preempt lower priority ones automatically\n3. **Configurable priorities** \u2014 typically 3-8 bits of priority (8-256 levels), split into preemption priority and sub-priority\n\n**Priority numbering (confusing!):**\n- **Lower number = higher priority** (opposite of RTOS task priority in most systems)\n- Priority 0 is the highest, 255 is the lowest\n- Bits split into group priority (preemption) and sub-priority (tie-breaking)\n\n**Tail-chaining:**\nWhen an ISR finishes and another interrupt is pending, the NVIC skips the full context restore + re-save cycle. Instead, it chains directly to the next ISR with just a 6-cycle overhead (vs. 12+12 cycles for exit + entry). This dramatically improves throughput when multiple interrupts fire in succession.\n\n**Late arrival:**\nIf a higher-priority interrupt arrives during the stacking phase of a lower-priority interrupt, the NVIC redirects to the higher-priority handler without re-stacking. The lower-priority ISR runs after via tail-chaining.\n\n**BASEPRI register:**\nYou can mask all interrupts below a certain priority level without disabling interrupts globally \u2014 critical for creating \"critical sections\" that still allow time-critical interrupts (like safety watchdogs) to fire."
+    },
+    {
+      "id": "mem-001",
+      "category": "memory",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain the memory layout of a typical embedded firmware image. What are .text, .data, .bss, .rodata, and the stack/heap?",
+      "answer": "**Typical firmware memory layout (flash + RAM):**\n\n```\nFLASH (non-volatile):\n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 0x08000000\n\u2502  Vector Table   \u2502 Reset handler, ISR addresses\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502    .text        \u2502 Executable code\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502    .rodata      \u2502 Constants, string literals\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502  .data (init)   \u2502 Initial values for .data section\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\nRAM (volatile):\n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 0x20000000\n\u2502    .data        \u2502 Initialized global/static variables\n\u2502                 \u2502 (copied from flash at startup)\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502    .bss         \u2502 Zero-initialized globals/statics\n\u2502                 \u2502 (zeroed by startup code)\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502    Heap \u2193       \u2502 Dynamic allocation (grows down)\n\u2502                 \u2502\n\u2502    Stack \u2191      \u2502 Function calls (grows up toward heap)\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n```\n\n**Key sections:**\n- **.text** \u2014 compiled machine code, lives in flash, executed in place (XIP) or copied to RAM\n- **.rodata** \u2014 `const` globals, string literals, lookup tables\n- **.data** \u2014 initialized globals (`int count = 42;`) \u2014 stored in flash, copied to RAM at boot\n- **.bss** \u2014 uninitialized globals (`int count;`) \u2014 zeroed at boot, doesn't consume flash space\n- **Stack** \u2014 local variables, function call frames, ISR context saves\n- **Heap** \u2014 `malloc` allocations (often avoided in embedded)\n\n**Firmware relevance:**\n- Linker scripts (`.ld`) define these regions \u2014 you need to understand them to debug boot failures\n- Stack overflow is a top firmware bug \u2014 no MMU to catch it on most Cortex-M\n- `.bss` vs `.data` matters for flash size \u2014 uninitialized globals are free in flash"
+    },
+    {
+      "id": "mem-002",
+      "category": "memory",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Why is dynamic memory allocation (malloc/free) generally avoided in safety-critical embedded systems? What alternatives exist?",
+      "answer": "**Problems with malloc/free in firmware:**\n\n1. **Fragmentation** \u2014 after many alloc/free cycles, heap becomes fragmented. You might have 1KB free but can't allocate 512 bytes because it's in non-contiguous 64-byte chunks. No solution without compaction (which moves pointers).\n\n2. **Non-deterministic timing** \u2014 malloc scans free lists; time varies wildly based on heap state. In a real-time system, you can't guarantee timing.\n\n3. **No safety net** \u2014 most embedded systems lack an MMU. Heap overflow silently corrupts the stack or .bss. No segfault, just mysterious behavior.\n\n4. **Memory leaks** \u2014 in a system that runs for years without rebooting, any leak is fatal.\n\n5. **Thread safety** \u2014 malloc/free typically use locks internally, which can cause priority inversion in RTOS contexts.\n\n**Alternatives:**\n\n1. **Static allocation** \u2014 allocate everything at compile time. Size is known, verified by the linker.\n\n2. **Memory pools** \u2014 pre-allocate fixed-size blocks. O(1) alloc/free, no fragmentation, deterministic. ThreadX has `tx_block_pool` and `tx_byte_pool`.\n\n3. **Stack allocation** \u2014 use local variables and alloca for temporary buffers.\n\n4. **Arena/region allocators** \u2014 allocate linearly from a buffer, free everything at once (great for request-processing patterns).\n\n**SEL context:** Their protective relays must respond within milliseconds to power grid faults. Non-deterministic malloc timing is unacceptable \u2014 human safety depends on it."
+    },
+    {
+      "id": "sd-001",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Design a secure boot chain for an embedded device with an ARM Cortex-A processor. Walk through the boot stages and how each one verifies the next.",
+      "answer": "**Secure Boot Chain:**\n\n```\nROM Bootloader (immutable, in silicon)\n    \u2502 verifies signature of \u2192\n    \u25bc\nFirst-Stage Bootloader (SPL/BL2, in flash)\n    \u2502 verifies signature of \u2192\n    \u25bc\nSecond-Stage Bootloader (U-Boot/BL31/BL33)\n    \u2502 verifies signature of \u2192\n    \u25bc\nFirmware / OS Image\n    \u2502 verifies signatures of \u2192\n    \u25bc\nApplication / Modules\n```\n\n**Key components:**\n\n1. **Root of Trust (RoT)** \u2014 starts in ROM (burned into silicon, immutable). Contains the public key hash and initial boot code. This is the anchor \u2014 if it's compromised, everything is.\n\n2. **Hardware key storage** \u2014 OTP (one-time programmable) fuses store the root public key hash. Can't be modified after provisioning.\n\n3. **Each stage:**\n   - Loads the next stage image from flash\n   - Verifies its cryptographic signature (RSA-2048/ECDSA-P256) against the embedded public key\n   - If verification fails: halt, enter recovery mode, or boot a known-good fallback\n   - If it passes: jump to the verified code\n\n4. **Anti-rollback** \u2014 monotonic counter in OTP prevents flashing older (vulnerable) firmware versions.\n\n5. **Measured boot** (optional) \u2014 each stage hashes itself and extends a TPM/secure element PCR. Attestation server can verify the entire chain remotely."
+    },
+    {
+      "id": "sd-002",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Design an OTA (Over-The-Air) firmware update system for a fleet of IoT devices. Consider reliability, security, and recovery.",
+      "answer": "**Architecture:**\n\n```\n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510     \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510     \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 Build Server \u2502\u2500\u2500\u2500\u2500\u25b6\u2502 Update Server\u2502\u2500\u2500\u2500\u2500\u25b6\u2502   Devices    \u2502\n\u2502 (CI/CD)      \u2502     \u2502 (CDN + API)  \u2502     \u2502   (fleet)    \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518     \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518     \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n```\n\n**Device-side design:**\n\n1. **Dual-bank (A/B) flash layout:**\n   - Bank A: currently running firmware\n   - Bank B: download target\n   - Bootloader decides which bank to boot\n   - If new firmware fails health check \u2192 revert to other bank\n\n2. **Update flow:**\n   - Device polls server (or server pushes via MQTT/CoAP)\n   - Download image in chunks (resume on disconnect)\n   - Verify: checksum (CRC32) per chunk + full image signature (ECDSA)\n   - Write to inactive bank\n   - Set \"pending update\" flag\n   - Reboot \u2192 bootloader boots new bank\n   - New firmware runs self-test \u2192 marks itself \"confirmed\"\n   - If no confirmation within N boots \u2192 bootloader reverts\n\n3. **Security:**\n   - TLS for transport\n   - Code signing with device-verified public key\n   - Anti-rollback (version monotonic counter)\n   - Encrypted payloads if IP protection needed\n\n4. **Fleet management:**\n   - Staged rollout (1% \u2192 10% \u2192 50% \u2192 100%)\n   - Device reports version, health metrics\n   - Server can force-rollback if error rate spikes\n\n5. **Delta updates:**\n   - Binary diff (bsdiff) to reduce download size\n   - Critical for bandwidth-constrained devices (cellular, satellite)\n\n**Failure modes to discuss:**\n- Power loss during write \u2192 dual-bank handles this\n- Corrupted download \u2192 chunk checksums + full signature\n- Bricked device \u2192 last-resort recovery mode in ROM/bootloader\n- Server compromise \u2192 code signing with offline keys"
+    },
+    {
+      "id": "sd-003",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Design the firmware architecture for a safety-critical protective relay that must trip a circuit breaker within 4 milliseconds of detecting a fault on the power grid.",
+      "answer": "**This is a SEL-specific question \u2014 their core product.**\n\n**Key constraints:**\n- 4ms fault-to-trip time (hard real-time deadline)\n- Failure modes: fail to trip (catastrophic) vs. nuisance trip (expensive but safe)\n- Must operate for 20+ years, often in harsh environments\n- Regulatory: IEC 61850, IEEE C37 standards\n\n**Architecture:**\n\n1. **Sampling layer** (highest priority ISR, ~4kHz):\n   - ADC samples voltage and current waveforms\n   - DMA transfers to processing buffer\n   - Minimal code \u2014 just capture and timestamp\n\n2. **Protection algorithms** (high-priority RTOS task, <1ms budget):\n   - Runs every sample set\n   - Phasor extraction (DFT/FFT on sliding window)\n   - Overcurrent, distance, differential protection algorithms\n   - Each algorithm: independent, deterministic, bounded execution time\n   - Output: trip/no-trip decision\n\n3. **Trip execution** (dedicated hardware path):\n   - Software decision \u2192 hardware output latch \u2192 circuit breaker coil\n   - Hardware watchdog ensures output works even if CPU hangs\n   - Redundant output paths (fail-operational)\n\n4. **Communication layer** (lower priority):\n   - IEC 61850 GOOSE messages to other relays\n   - SCADA interface for monitoring\n   - Time sync (IEEE 1588 PTP, <1\u03bcs accuracy)\n   - Must NOT interfere with protection tasks\n\n5. **Diagnostics / logging:**\n   - Event recorder (oscillography)\n   - Self-test routines (RAM check, ROM CRC, ADC calibration)\n   - Lowest priority \u2014 runs during idle time\n\n**Safety patterns:**\n- Watchdog timer (hardware, can't be disabled by software)\n- Stack overflow detection (MPU regions on Cortex-R/M)\n- Defensive coding: assertions, range checks, timeouts on everything\n- No dynamic memory, no recursion, bounded loops\n- MISRA C compliance\n- Extensive unit + integration + hardware-in-the-loop testing"
+    },
+    {
+      "id": "dbg-001",
+      "category": "debugging",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "A device works fine in the lab but crashes randomly in the field after running for several hours. Walk through your debugging approach.",
+      "answer": "**Systematic approach:**\n\n1. **Gather data first:**\n   - What kind of crash? (Hard fault, watchdog reset, hang, data corruption?)\n   - Frequency? (Every 2 hours? Random? Under load?)\n   - Do crash logs/core dumps exist?\n   - What's different about field vs. lab? (Temperature, power, EMI, load patterns)\n\n2. **Common culprits for time-dependent field crashes:**\n\n   - **Memory leak** \u2014 heap slowly exhausts. Check heap watermark over time.\n   - **Stack overflow** \u2014 deep call path under specific conditions. Fill stack with canary pattern, check on crash.\n   - **Integer overflow/counter wrap** \u2014 a 32-bit counter at 1kHz wraps in ~50 days. A 16-bit counter wraps in 65 seconds.\n   - **Race condition** \u2014 timing-dependent, appears under real-world task interleaving that lab conditions don't trigger.\n   - **Hardware** \u2014 temperature-dependent timing margin, power supply droop under load, ESD damage.\n   - **Buffer overflow** \u2014 specific data pattern in the field triggers an overrun.\n\n3. **Debugging strategy:**\n   - Add persistent logging (survives reset) \u2014 write breadcrumbs to flash/EEPROM\n   - Instrument with watermarks (stack high-water, heap usage, queue depths)\n   - Enable fault handlers that dump registers + stack trace on crash\n   - If you suspect race conditions: stress test with randomized task timing\n   - If temperature-related: thermal chamber testing\n   - Review recent code changes \u2014 what shipped just before this started?"
+    },
+    {
+      "id": "dbg-002",
+      "category": "debugging",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "You encounter an ARM Cortex-M HardFault. How do you determine what caused it and where it happened?",
+      "answer": "**Step-by-step HardFault debugging:**\n\n1. **Implement a HardFault handler that captures context:**\n```c\nvoid HardFault_Handler(void) {\n    __asm volatile (\n        \"TST LR, #4\\n\"       // Check EXC_RETURN bit 2\n        \"ITE EQ\\n\"\n        \"MRSEQ R0, MSP\\n\"   // Main stack pointer\n        \"MRSNE R0, PSP\\n\"   // Process stack pointer\n        \"B hard_fault_handler_c\\n\"\n    );\n}\n\nvoid hard_fault_handler_c(uint32_t *frame) {\n    uint32_t r0  = frame[0];\n    uint32_t r1  = frame[1];\n    uint32_t r2  = frame[2];\n    uint32_t r3  = frame[3];\n    uint32_t r12 = frame[4];\n    uint32_t lr  = frame[5];  // Return address hint\n    uint32_t pc  = frame[6];  // EXACT fault address\n    uint32_t psr = frame[7];\n    \n    // Log these + fault status registers\n    uint32_t cfsr = SCB->CFSR;  // Configurable Fault Status\n    uint32_t hfsr = SCB->HFSR;  // HardFault Status\n    uint32_t mmfar = SCB->MMFAR; // MemManage Fault Address\n    uint32_t bfar = SCB->BFAR;   // BusFault Address\n    \n    // Store to persistent memory, trigger breakpoint, or reset\n    __BKPT(0);\n}\n```\n\n2. **Read the fault status registers:**\n   - **CFSR** tells you the fault type:\n     - MMFSR (bits [7:0]): Memory protection violations\n     - BFSR (bits [15:8]): Bus errors (invalid address, peripheral access)\n     - UFSR (bits [31:16]): Usage faults (undefined instruction, unaligned access, divide by zero)\n   - **HFSR** bit 30 (FORCED): escalated from a configurable fault\n   - **BFAR/MMFAR**: the offending address (if valid bit is set)\n\n3. **Use PC to find the faulting code:**\n   - `addr2line -e firmware.elf <PC value>` \u2192 source file + line number\n   - Or in GDB: `list *0x0800ABCD`\n\n4. **Common causes:**\n   - Null pointer dereference (access to address 0x00000000)\n   - Stack overflow (SP went into invalid region)\n   - Unaligned access (on cores without unaligned support enabled)\n   - Writing to flash/read-only region\n   - Accessing a peripheral with its clock disabled"
+    },
+    {
+      "id": "proto-001",
+      "category": "protocols",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Compare SPI and I2C. When would you choose each for a firmware project?",
+      "answer": "**SPI (Serial Peripheral Interface):**\n- **Signals:** SCLK, MOSI, MISO, CS (per device)\n- **Speed:** 1-100+ MHz typical\n- **Topology:** Point-to-point (separate CS for each device)\n- **Full duplex:** Yes\n- **Overhead:** Minimal \u2014 just clock and data\n\n**I2C (Inter-Integrated Circuit):**\n- **Signals:** SDA, SCL (just 2 wires)\n- **Speed:** 100kHz (standard), 400kHz (fast), 1MHz (fast+), 3.4MHz (high-speed)\n- **Topology:** Multi-drop bus (up to 127 devices on 2 wires)\n- **Full duplex:** No (half-duplex)\n- **Overhead:** Start/stop conditions, addressing, ACK/NACK bits\n\n**Choose SPI when:**\n- Speed matters (displays, flash memory, ADCs)\n- You need full duplex\n- You have enough GPIO pins for chip selects\n- Simple point-to-point communication\n\n**Choose I2C when:**\n- Pin count is limited (only 2 pins for many devices)\n- Speed isn't critical (sensors, EEPROMs, RTCs)\n- Many devices on one bus\n- You need hot-plug capability\n\n**Firmware gotchas:**\n- I2C clock stretching: slow slave holds SCL low, can hang the bus if it locks up. Always implement timeout.\n- SPI mode (CPOL/CPHA): 4 modes \u2014 get it wrong and you read garbage. Check the datasheet.\n- I2C address conflicts: two devices with the same 7-bit address on one bus = pain."
+    },
+    {
+      "id": "proto-002",
+      "category": "protocols",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "You're the USB subject matter expert. Explain the USB enumeration process and what firmware needs to do during it.",
+      "answer": "**USB Enumeration (device side, firmware perspective):**\n\n1. **Attach detection:**\n   - Device connects, pulls D+/D- to signal speed (FS: D+ pullup, LS: D- pullup, HS: chirp protocol)\n   - Host detects voltage change, waits 100ms for power stabilization\n\n2. **Reset:**\n   - Host drives SE0 (both lines low) for 10ms\n   - Device firmware: reset USB peripheral, set address to 0\n\n3. **Get Device Descriptor (address 0, EP0):**\n   - Host sends SETUP packet \u2192 GET_DESCRIPTOR (device, 8 bytes initially)\n   - Firmware: respond with first 8 bytes of device descriptor (enough to learn max packet size)\n   - Host may reset again after this\n\n4. **Set Address:**\n   - Host assigns a unique address (1-127)\n   - Firmware: acknowledge, then switch to new address AFTER completing the status stage\n   - **Common bug:** switching address too early or too late\n\n5. **Get Full Descriptors:**\n   - Device descriptor (VID, PID, class, etc.)\n   - Configuration descriptor (interfaces, endpoints, power)\n   - String descriptors (manufacturer, product name)\n   - Firmware: serve each from descriptor tables in flash/ROM\n\n6. **Set Configuration:**\n   - Host selects a configuration (usually config 1)\n   - Firmware: enable endpoints, allocate buffers, start operation\n\n**Firmware implementation:**\n- EP0 control transfer state machine (SETUP \u2192 DATA \u2192 STATUS)\n- Descriptor tables (often auto-generated)\n- Class-specific handling (CDC, HID, MSC, etc.)\n- Error recovery: STALL on unsupported requests, handle bus resets at any time"
+    },
+    {
+      "id": "conc-004",
+      "category": "concurrency",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a simple state machine for a traffic light controller with pedestrian crossing support. Use an enum for states and a function that handles transitions.",
+      "answer": "```c\n#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\ntypedef enum {\n    STATE_GREEN,\n    STATE_YELLOW,\n    STATE_RED,\n    STATE_PED_WALK,\n    STATE_PED_FLASH,\n    STATE_COUNT\n} TrafficState;\n\ntypedef enum {\n    EVENT_TIMER,\n    EVENT_PED_BUTTON,\n    EVENT_EMERGENCY,\n    EVENT_COUNT\n} TrafficEvent;\n\ntypedef struct {\n    TrafficState current;\n    bool ped_requested;\n    uint32_t tick_count;\n    uint32_t state_ticks;\n} TrafficController;\n\nstatic const uint32_t state_durations[] = {\n    [STATE_GREEN]     = 30,\n    [STATE_YELLOW]    = 5,\n    [STATE_RED]       = 20,\n    [STATE_PED_WALK]  = 10,\n    [STATE_PED_FLASH] = 5,\n};\n\nvoid traffic_init(TrafficController *tc) {\n    tc->current = STATE_RED;\n    tc->ped_requested = false;\n    tc->tick_count = 0;\n    tc->state_ticks = 0;\n}\n\nvoid traffic_transition(TrafficController *tc, TrafficState new_state) {\n    printf(\"[%3u] %d -> %d\\n\", tc->tick_count, tc->current, new_state);\n    tc->current = new_state;\n    tc->state_ticks = 0;\n}\n\nvoid traffic_handle_event(TrafficController *tc, TrafficEvent event) {\n    if (event == EVENT_PED_BUTTON) {\n        tc->ped_requested = true;\n        return;\n    }\n    \n    if (event == EVENT_TIMER) {\n        tc->tick_count++;\n        tc->state_ticks++;\n        \n        if (tc->state_ticks < state_durations[tc->current])\n            return;\n        \n        switch (tc->current) {\n            case STATE_GREEN:\n                traffic_transition(tc, STATE_YELLOW);\n                break;\n            case STATE_YELLOW:\n                traffic_transition(tc, STATE_RED);\n                break;\n            case STATE_RED:\n                if (tc->ped_requested) {\n                    tc->ped_requested = false;\n                    traffic_transition(tc, STATE_PED_WALK);\n                } else {\n                    traffic_transition(tc, STATE_GREEN);\n                }\n                break;\n            case STATE_PED_WALK:\n                traffic_transition(tc, STATE_PED_FLASH);\n                break;\n            case STATE_PED_FLASH:\n                traffic_transition(tc, STATE_GREEN);\n                break;\n            default:\n                traffic_transition(tc, STATE_RED); // Safe default\n        }\n    }\n}\n```\n\n**Key design points:**\n- Enum for states and events (type safety, readability)\n- Table-driven durations (easy to tune without code changes)\n- Safe default state (red) for unexpected conditions\n- Pedestrian request is latched (survives state transitions until serviced)\n- Separation of state machine logic from I/O (testable without hardware)",
+      "starterCode": "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n// Define your states and events as enums\n\n// Define your controller struct\n\n// Implement:\n// - init function\n// - event handler with state transitions\n// - pedestrian crossing support\n\nint main() {\n    // Create controller, simulate 100 ticks with a\n    // pedestrian button press at tick 35\n    return 0;\n}"
+    },
+    {
+      "id": "c-006",
+      "category": "c-fundamentals",
+      "difficulty": "hard",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a simple memory pool allocator with fixed-size blocks. It should support alloc, free, and report available blocks.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n#include <string.h>\n#include <stdio.h>\n\n#define POOL_BLOCK_SIZE  64\n#define POOL_BLOCK_COUNT 16\n\ntypedef struct {\n    uint8_t memory[POOL_BLOCK_SIZE * POOL_BLOCK_COUNT];\n    uint8_t *free_list[POOL_BLOCK_COUNT];\n    uint32_t free_count;\n} MemPool;\n\nvoid pool_init(MemPool *pool) {\n    pool->free_count = POOL_BLOCK_COUNT;\n    for (uint32_t i = 0; i < POOL_BLOCK_COUNT; i++) {\n        pool->free_list[i] = &pool->memory[i * POOL_BLOCK_SIZE];\n    }\n}\n\nvoid *pool_alloc(MemPool *pool) {\n    if (pool->free_count == 0) return NULL;\n    pool->free_count--;\n    return pool->free_list[pool->free_count];\n}\n\nbool pool_free(MemPool *pool, void *ptr) {\n    uint8_t *p = (uint8_t *)ptr;\n    // Bounds check\n    if (p < pool->memory || p >= pool->memory + sizeof(pool->memory))\n        return false;\n    // Alignment check\n    if ((p - pool->memory) % POOL_BLOCK_SIZE != 0)\n        return false;\n    if (pool->free_count >= POOL_BLOCK_COUNT)\n        return false;\n    pool->free_list[pool->free_count] = p;\n    pool->free_count++;\n    return true;\n}\n\nuint32_t pool_available(MemPool *pool) {\n    return pool->free_count;\n}\n```\n\n**Key features:**\n- O(1) alloc and free (stack-based free list)\n- No fragmentation (all blocks same size)\n- Deterministic timing (critical for RTOS)\n- Bounds and alignment checking on free\n- No dynamic memory used \u2014 everything is statically allocated",
+      "starterCode": "#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n\n#define BLOCK_SIZE  32\n#define BLOCK_COUNT 8\n\n// Define your pool struct\n\n// Implement:\n// - pool_init()\n// - pool_alloc() -> void*\n// - pool_free(void*) -> bool\n// - pool_available() -> count\n\nint main() {\n    // Test: alloc all blocks, free some, alloc again\n    // Verify: can't alloc when full, can't free invalid pointers\n    return 0;\n}"
+    }
+  ]
+}
