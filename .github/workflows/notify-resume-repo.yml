@@ -1,0 +1,19 @@
+name: Notify Resume Repo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'questions.json'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync in resume repo
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.RESUME_REPO_PAT }}
+          repository: cat-battle/resume
+          event-type: sync-interview-trainer
