@@ -47,9 +47,9 @@ python3 -m http.server 8000
 ## How It Works
 
 ### C Compilation
-Code is compiled and run using the [Piston API](https://github.com/engineer-man/piston) — a free, open-source code execution engine. No API key required. Your code is sent to the API, compiled with GCC, and the output is returned to your browser.
+Code is compiled and run using the [Wandbox API](https://wandbox.org/) — a free, open-source online compiler. No API key required. Your code is sent to the API, compiled with GCC, and the output is returned to your browser.
 
-**Privacy note:** Your code is sent to the Piston API for compilation. If you need fully offline compilation, you can [self-host Piston](https://github.com/engineer-man/piston#self-hosting) and update the API URL in the source.
+**Privacy note:** Your code is sent to the Wandbox API for compilation. If you need fully offline compilation, you can self-host a compiler API and update the URL in the source.
 
 ### Progress Tracking
 All progress is stored in your browser's `localStorage`. Nothing leaves your machine. Clear your browser data to reset progress.
@@ -94,19 +94,16 @@ Use the [New Question template](.github/ISSUE_TEMPLATE/new-question.md) to propo
 For offline use or if you want faster compilation, self-host the Piston API:
 
 ```bash
-docker run -d --name piston \
-  -p 2000:2000 \
-  --privileged \
-  ghcr.io/engineer-man/piston
+docker run -d --name wandbox -p 3500:3500 melpon/wandbox
 ```
 
-Then update the `COMPILE_API_URL` in `index.html` to point to your instance.
+Then update the Wandbox API URL in `index.html` to point to your instance.
 
 ## Tech Stack
 
 - **Frontend:** Vanilla HTML/CSS/JS (single file, no build step)
 - **Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) (VS Code's editor component)
-- **Compilation:** [Piston API](https://github.com/engineer-man/piston) (free, open-source)
+- **Compilation:** [Wandbox API](https://wandbox.org/) (free, open-source)
 - **Hosting:** GitHub Pages (static, zero cost)
 
 ## License
