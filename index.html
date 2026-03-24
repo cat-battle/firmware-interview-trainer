@@ -531,6 +531,7 @@
     <!-- Progress -->
     <div class="sidebar-section">
       <h3>Progress</h3>
+      <button class="clear-btn" id="clearAnswersBtn">✏️ Clear My Answers</button>
       <button class="clear-btn" id="clearProgressBtn">🗑 Clear All Progress</button>
     </div>
 
@@ -1343,6 +1344,13 @@ function stopTimer() {
 // ─────────────────────────────────────────────
 // CLEAR PROGRESS
 // ─────────────────────────────────────────────
+document.getElementById('clearAnswersBtn').addEventListener('click', () => {
+  if (confirm('Clear all your written answers? Progress and confidence ratings will be kept.')) {
+    storageSet('userAnswers', {});
+    showQuestion(currentIndex);
+  }
+});
+
 document.getElementById('clearProgressBtn').addEventListener('click', () => {
   if (confirm('Clear all progress? This cannot be undone.')) {
     storageSet('progress', { viewed: {}, coding: {}, confidence: {} });
