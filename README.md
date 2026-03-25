@@ -4,11 +4,9 @@ An open-source, interactive interview prep tool for firmware and embedded system
 
 **[Try it live →](https://cat-battle.github.io/firmware-interview-trainer/)**
 
-![Screenshot](screenshot.png)
-
 ## Features
 
-- 🎯 **33+ firmware-specific questions** across 8 categories
+- 🎯 **67 firmware-specific questions** across 8 categories (28 coding, 39 conceptual)
 - 💻 **Live C compilation** — write, compile, and run C code in the browser
 - ✅ **Test case validation** — automated pass/fail checking for coding questions
 - ⏱️ **Timer mode** — simulate interview pressure with countdown timers
@@ -21,14 +19,14 @@ An open-source, interactive interview prep tool for firmware and embedded system
 
 | Category | Questions | Description |
 |----------|-----------|-------------|
-| 🔤 C Language | 6 | volatile, const, static, struct packing, offsetof, memory pools |
-| 🔧 Bit Manipulation | 3 | Set/clear/toggle bits, bit field extraction, ring buffers |
-| 🔄 Concurrency & RTOS | 4 | Priority inversion, deadlocks, mutexes vs semaphores, state machines |
-| ⚡ Interrupts & ISR | 3 | ISR best practices, ARM Cortex-M NVIC, watchdog timers |
-| 💾 Memory & Storage | 3 | Memory layout, malloc alternatives, NOR vs NAND flash |
-| 🏗️ System Design | 4 | Secure boot, OTA updates, safety-critical systems, low-power design |
-| 🐛 Debugging | 2 | Field crash debugging, HardFault analysis |
-| 🔌 Protocols | 8 | SPI/I2C, USB enumeration, UART, CAN bus, DMA, Ethernet |
+| 🔤 C Language | 13 | volatile, const, static, struct packing, offsetof, memory pools, function pointers, and more |
+| 🔧 Bit Manipulation | 7 | Set/clear/toggle bits, bit field extraction, ring buffers, endianness |
+| 🔄 Concurrency & RTOS | 8 | Priority inversion, deadlocks, mutexes vs semaphores, state machines, task scheduling |
+| ⚡ Interrupts & ISR | 6 | ISR best practices, ARM Cortex-M NVIC, watchdog timers, nested interrupts |
+| 💾 Memory & Storage | 6 | Memory layout, malloc alternatives, NOR vs NAND flash, wear leveling |
+| 🏗️ System Design | 9 | Secure boot, OTA updates, safety-critical systems, low-power design, bootloaders |
+| 🐛 Debugging | 6 | Field crash debugging, HardFault analysis, memory corruption, race conditions |
+| 🔌 Protocols | 12 | SPI/I2C, USB enumeration, UART, CAN bus, DMA, Ethernet, protocol debugging |
 
 ## Quick Start
 
@@ -91,13 +89,12 @@ Use the [New Question template](.github/ISSUE_TEMPLATE/new-question.md) to propo
 
 ## Self-Hosting the Compiler
 
-For offline use or if you want faster compilation, self-host the Piston API:
+For offline use or if you want faster compilation, you can self-host a Wandbox instance:
 
 ```bash
-docker run -d --name wandbox -p 3500:3500 melpon/wandbox
+# See https://github.com/melpon/wandbox for self-hosting instructions
+# Then update the API URL in index.html to point to your local instance
 ```
-
-Then update the Wandbox API URL in `index.html` to point to your instance.
 
 ## Tech Stack
 
