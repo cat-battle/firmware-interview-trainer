@@ -1136,15 +1136,19 @@ document.getElementById('runCodeBtn').addEventListener('click', async () => {
   if (q && q.id) markCodingAttempted(q.id);
   updateStats();
 
+  // Detect C++ code
+  const isCpp = /^\s*#\s*include\s*<(cstdio|cstdlib|cstring|cmath|iostream|fstream|sstream|vector|map|set|string|array|algorithm|memory|functional|numeric|queue|stack|deque|list|unordered_map|unordered_set|bitset|tuple|optional|variant|any|chrono|thread|mutex|atomic|regex|filesystem|cassert|cstdint|cstddef|climits|cfloat|cctype|ctime|typeinfo|stdexcept|utility|iterator|type_traits|initializer_list|new|limits)>/m.test(code) ||
+    /\b(std::|cout|cin|cerr|endl|nullptr|class\s+\w+|template\s*<|namespace\s+\w+|using\s+namespace|auto\s+\w+\s*=|constexpr|static_cast|dynamic_cast|reinterpret_cast|const_cast)\b/.test(code);
+
   try {
     const res = await fetch('https://wandbox.org/api/compile.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        compiler: 'gcc-head-c',
+        compiler: isCpp ? 'gcc-head' : 'gcc-head-c',
         code: code,
         options: '-Wall -Wextra',
-        'compiler-option-raw': '-std=c11',
+        'compiler-option-raw': isCpp ? '-std=c++17' : '-std=c11',
       }),
     });
 
