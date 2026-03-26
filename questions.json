@@ -64,6 +64,11 @@
       "label": "Firmware Security",
       "icon": "\ud83d\udd12",
       "color": "#e06c75"
+    },
+    "spot-the-bug": {
+      "label": "Spot the Bug",
+      "icon": "\ud83d\udc1b",
+      "color": "#f85149"
     }
   },
   "questions": [
@@ -2671,6 +2676,380 @@
         "Think about what the loop overhead actually costs on a pipelined processor",
         "Strength reduction is about replacing operations, not removing them",
         "Consider both time AND space on a constrained MCU"
+      ]
+    },
+    {
+      "id": "bug-001",
+      "category": "spot-the-bug",
+      "title": "The ISR Data Race",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "ISR",
+        "volatile",
+        "race-condition",
+        "shared-state",
+        "embedded"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This code shares a counter between an ISR and main loop. It compiles and appears to work in debug builds but fails in release. Find the bug(s) and fix them.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n\n// Simulated hardware timer ISR\nstatic int tick_count = 0;\nstatic int data_ready = 0;\nstatic int sensor_value = 0;\n\nvoid timer_isr(void) {\n    tick_count++;\n    if (tick_count >= 100) {\n        sensor_value = 42;  // new reading available\n        data_ready = 1;\n        tick_count = 0;\n    }\n}\n\n// Main loop\nint main() {\n    // Simulate: ISR fires, then we check\n    for (int i = 0; i < 150; i++) {\n        timer_isr();  // simulate ISR firing\n    }\n\n    // In real firmware, this would be a while(1) loop\n    if (data_ready) {\n        printf(\"Sensor: %d\\n\", sensor_value);\n        data_ready = 0;\n    }\n\n    // BUG: What happens in a real system with optimizations enabled?\n    // The compiler may:\n    // 1. Cache data_ready in a register and never re-read it\n    // 2. Reorder the reads of data_ready and sensor_value\n    // 3. Optimize away the entire if-block if it \"proves\" data_ready is 0\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug 1: Missing `volatile`** on all three shared variables.\n\nWithout `volatile`, the compiler is free to:\n- Cache `data_ready` in a register \u2014 the `while(!data_ready)` loop becomes infinite\n- Reorder or eliminate reads of `sensor_value`\n- Optimize away the entire check in `-O2`\n\n**Bug 2: Non-atomic access to `sensor_value` + `data_ready`.**\n\nEven with `volatile`, on a 32-bit MCU these are atomic individually, but the *pair* is not. The ISR could fire between reading `data_ready` and reading `sensor_value`.\n\n**Fix:**\n```c\nstatic volatile int tick_count = 0;\nstatic volatile int data_ready = 0;\nstatic volatile int sensor_value = 0;\n\n// In the main loop, disable interrupts around the compound read:\nif (data_ready) {\n    __disable_irq();\n    int val = sensor_value;\n    data_ready = 0;\n    __enable_irq();\n    printf(\"Sensor: %d\\n\", val);\n}\n```\n\n**Why debug builds hide this:** Debug (`-O0`) doesn't optimize away memory reads \u2014 every variable access goes to RAM. Release (`-O2`) aggressively caches in registers, exposing the missing `volatile`.",
+      "testCases": [
+        {
+          "description": "Sensor value printed",
+          "expected": "Sensor: 42"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "What does the compiler assume about variables modified only in an ISR?",
+        "Why does this work in -O0 but break in -O2?",
+        "Is volatile alone sufficient for the two-variable read?"
+      ]
+    },
+    {
+      "id": "bug-002",
+      "category": "spot-the-bug",
+      "title": "Off-by-One Buffer Overflow",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "buffer-overflow",
+        "off-by-one",
+        "string",
+        "null-terminator",
+        "memory"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This UART command parser has a subtle buffer overflow. Find it. Hint: it's the kind of bug that works fine in testing with short commands but crashes in production.",
+      "starterCode": "#include <cstdio>\n#include <cstring>\n#include <cstdint>\n\n#define MAX_CMD_LEN 16\n\ntypedef struct {\n    char buffer[MAX_CMD_LEN];\n    int length;\n} command_t;\n\nint parse_command(const char* input, command_t* cmd) {\n    int len = strlen(input);\n\n    if (len > MAX_CMD_LEN) {\n        printf(\"Command too long\\n\");\n        return -1;\n    }\n\n    strcpy(cmd->buffer, input);\n    cmd->length = len;\n    return 0;\n}\n\nint main() {\n    command_t cmd;\n\n    // These should work fine\n    parse_command(\"LED ON\", &cmd);\n    printf(\"Parsed: '%s' (len=%d)\\n\", cmd.buffer, cmd.length);\n\n    parse_command(\"TEMP READ\", &cmd);\n    printf(\"Parsed: '%s' (len=%d)\\n\", cmd.buffer, cmd.length);\n\n    // This is exactly MAX_CMD_LEN characters - does it work?\n    parse_command(\"CALIBRATE SENSOR\", &cmd);  // 16 chars!\n    printf(\"Parsed: '%s' (len=%d)\\n\", cmd.buffer, cmd.length);\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: `>` should be `>=`** (or better: `> MAX_CMD_LEN - 1`)\n\n```c\nif (len > MAX_CMD_LEN)  // allows len == 16\n```\n\nWhen `len == 16` (exactly `MAX_CMD_LEN`), the check passes. But `strcpy` copies 16 chars **plus a null terminator** = 17 bytes into a 16-byte buffer. That's a one-byte overflow that corrupts `cmd->length` (or whatever follows `buffer` in memory).\n\n**Fix:**\n```c\nif (len >= MAX_CMD_LEN) {  // now rejects len == 16\n    printf(\"Command too long\\n\");\n    return -1;\n}\n```\n\n**Or use `strncpy` for defense in depth:**\n```c\nif (len >= MAX_CMD_LEN) return -1;\nstrncpy(cmd->buffer, input, MAX_CMD_LEN - 1);\ncmd->buffer[MAX_CMD_LEN - 1] = '\\0';\n```\n\n**Why this is insidious:** The overflow is exactly 1 byte \u2014 the null terminator. On most architectures it corrupts `length` (the next struct member). With different struct packing or alignment it might corrupt padding bytes and appear to work. Classic \"works on my machine\" bug.\n\n**The deeper lesson:** Any time you see `strlen() > BUFSIZE` guarding a `strcpy`, it's almost certainly wrong. The null terminator is the perennial +1 that gets forgotten.",
+      "testCases": [
+        {
+          "description": "Short command works",
+          "expected": "Parsed: 'LED ON'"
+        },
+        {
+          "description": "Medium command works",
+          "expected": "Parsed: 'TEMP READ'"
+        },
+        {
+          "description": "Completes without crash",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "How many bytes does strcpy actually write for a 16-character string?",
+        "What lives in memory immediately after buffer[15]?",
+        "Change one character in the comparison to fix it."
+      ]
+    },
+    {
+      "id": "bug-003",
+      "category": "spot-the-bug",
+      "title": "The Deadlock",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "deadlock",
+        "mutex",
+        "lock-ordering",
+        "concurrency",
+        "ABBA"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This code transfers data between two buffers using two mutexes. It works most of the time but occasionally hangs forever. Find the deadlock and fix it.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n#include <cstring>\n#include <pthread.h>\n\ntypedef struct {\n    pthread_mutex_t lock;\n    uint8_t data[256];\n    int count;\n    const char* name;\n} buffer_t;\n\nbuffer_t buf_a = { PTHREAD_MUTEX_INITIALIZER, {0}, 0, \"A\" };\nbuffer_t buf_b = { PTHREAD_MUTEX_INITIALIZER, {0}, 0, \"B\" };\n\n// Transfer from src to dst\nvoid transfer(buffer_t* src, buffer_t* dst) {\n    pthread_mutex_lock(&src->lock);\n    printf(\"  Locked %s\\n\", src->name);\n\n    // Simulate some work\n    for (volatile int i = 0; i < 1000; i++) {}\n\n    pthread_mutex_lock(&dst->lock);\n    printf(\"  Locked %s\\n\", dst->name);\n\n    if (src->count > 0) {\n        int n = src->count < 10 ? src->count : 10;\n        memcpy(dst->data + dst->count, src->data, n);\n        dst->count += n;\n        src->count -= n;\n        printf(\"  Transferred %d bytes %s -> %s\\n\", n, src->name, dst->name);\n    }\n\n    pthread_mutex_unlock(&dst->lock);\n    pthread_mutex_unlock(&src->lock);\n}\n\n// Thread 1: moves data A -> B\nvoid* thread1(void* arg) {\n    for (int i = 0; i < 100; i++) {\n        printf(\"T1: A -> B\\n\");\n        transfer(&buf_a, &buf_b);\n    }\n    return NULL;\n}\n\n// Thread 2: moves data B -> A\nvoid* thread2(void* arg) {\n    for (int i = 0; i < 100; i++) {\n        printf(\"T2: B -> A\\n\");\n        transfer(&buf_b, &buf_a);\n    }\n    return NULL;\n}\n\nint main() {\n    buf_a.count = 50;\n    buf_b.count = 50;\n\n    pthread_t t1, t2;\n    pthread_create(&t1, NULL, thread1, NULL);\n    pthread_create(&t2, NULL, thread2, NULL);\n\n    pthread_join(t1, NULL);\n    pthread_join(t2, NULL);\n\n    printf(\"Final: A=%d B=%d\\n\", buf_a.count, buf_b.count);\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: Classic ABBA deadlock.**\n\nThread 1 calls `transfer(&buf_a, &buf_b)` \u2192 locks A then B.\nThread 2 calls `transfer(&buf_b, &buf_a)` \u2192 locks B then A.\n\nIf both threads lock their first mutex simultaneously:\n```\nT1: holds A, waiting for B\nT2: holds B, waiting for A\n\u2192 DEADLOCK\n```\n\n**Fix: Enforce a consistent lock ordering.** Always lock the \"lower\" address (or lower ID) first, regardless of transfer direction:\n\n```c\nvoid transfer(buffer_t* src, buffer_t* dst) {\n    // Always lock in consistent order (by address)\n    buffer_t* first  = (src < dst) ? src : dst;\n    buffer_t* second = (src < dst) ? dst : src;\n\n    pthread_mutex_lock(&first->lock);\n    pthread_mutex_lock(&second->lock);\n\n    // ... transfer logic unchanged ...\n\n    pthread_mutex_unlock(&second->lock);\n    pthread_mutex_unlock(&first->lock);\n}\n```\n\n**Alternative fixes:**\n1. **Single lock** \u2014 if contention is low, just use one mutex for both buffers\n2. **trylock** \u2014 `pthread_mutex_trylock` on the second lock, release first if it fails (retry)\n3. **Lock hierarchy** \u2014 assign numeric levels to each mutex, always acquire in ascending order\n\n**The rule:** When acquiring multiple locks, ALWAYS acquire in the same global order. \"Lock ordering\" is the #1 deadlock prevention technique.",
+      "testCases": [
+        {
+          "description": "Transfers complete",
+          "expected": "Done"
+        },
+        {
+          "description": "Final counts shown",
+          "expected": "Final:"
+        }
+      ],
+      "hints": [
+        "What order does Thread 1 lock the mutexes? What about Thread 2?",
+        "What happens if both threads grab their first lock at the same time?",
+        "How can you ensure both threads always lock in the same order?"
+      ]
+    },
+    {
+      "id": "bug-004",
+      "category": "spot-the-bug",
+      "title": "Integer Promotion Surprise",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "integer-promotion",
+        "unsigned",
+        "signed",
+        "comparison",
+        "C-trap"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This sensor reading validator has a bug that causes it to accept clearly invalid readings. The code compiles without warnings. Find the integer promotion bug.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n\ntypedef struct {\n    int16_t temperature;  // in 0.1\u00b0C units (-400 to 1250 = -40.0\u00b0C to 125.0\u00b0C)\n    uint16_t humidity;    // in 0.1% units (0 to 1000 = 0% to 100%)\n    uint16_t pressure;    // in hPa (300 to 1100)\n} sensor_reading_t;\n\nint validate_reading(const sensor_reading_t* r) {\n    // Check temperature range: -40.0\u00b0C to 125.0\u00b0C\n    if (r->temperature < -400 || r->temperature > 1250) {\n        printf(\"  Temperature out of range: %d\\n\", r->temperature);\n        return -1;\n    }\n\n    // Check humidity: 0% to 100%\n    if (r->humidity < 0 || r->humidity > 1000) {\n        printf(\"  Humidity out of range: %u\\n\", r->humidity);\n        return -1;\n    }\n\n    // Check pressure: 300 to 1100 hPa\n    unsigned int low = 300;\n    int offset = -50;  // allow 50 below\n    if (r->pressure < (low + offset)) {  // intended: < 250\n        printf(\"  Pressure too low: %u\\n\", r->pressure);\n        return -1;\n    }\n\n    printf(\"  Reading OK: temp=%d hum=%u pres=%u\\n\",\n           r->temperature, r->humidity, r->pressure);\n    return 0;\n}\n\nint main() {\n    sensor_reading_t good = {250, 500, 1013};   // 25.0\u00b0C, 50%, 1013 hPa\n    sensor_reading_t cold = {-200, 300, 900};    // -20.0\u00b0C, 30%, 900 hPa\n    sensor_reading_t bad_pressure = {200, 400, 100};  // pressure way too low\n\n    printf(\"Test 1 (good reading):\\n\");\n    validate_reading(&good);\n\n    printf(\"Test 2 (cold but valid):\\n\");\n    validate_reading(&cold);\n\n    printf(\"Test 3 (bad pressure - should FAIL):\\n\");\n    int result = validate_reading(&bad_pressure);\n    if (result == 0) {\n        printf(\"  BUG: bad pressure was accepted!\\n\");\n    }\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**There are TWO bugs:**\n\n**Bug 1: `humidity < 0` is always false.**\n`r->humidity` is `uint16_t`. When promoted to `int` for comparison, it's still non-negative. The check `< 0` is dead code. Any compiler with `-Wtype-limits` would flag this, but it compiles clean by default.\n\nThis one is mostly harmless (humidity can't be negative anyway), but it reveals sloppy thinking about types.\n\n**Bug 2: `low + offset` wraps to a huge unsigned value.**\n```c\nunsigned int low = 300;\nint offset = -50;\nlow + offset  // unsigned + signed \u2192 unsigned arithmetic!\n              // -50 becomes 4294967246 (on 32-bit)\n              // 300 + 4294967246 = 4294967546 \u2192 wraps to 250... \n```\n\nWait \u2014 on 32-bit it actually **does** wrap to 250 and appears to work! But the comparison `r->pressure < (low + offset)` is an **unsigned comparison** because the result type is `unsigned int`. Since `r->pressure` (a `uint16_t`, max 65535) is promoted to `unsigned int`, and 250 is a valid unsigned value, this *happens* to work on most platforms.\n\n**The REAL bug is more subtle:** If `offset` were `-350` (making the intended threshold negative):\n```c\nlow + offset  // 300 + (-350) as unsigned = 4294966946\n// Now: pressure < 4294966946 is ALWAYS TRUE for any uint16_t\n```\n\n**Fix: Do the arithmetic in signed, then compare:**\n```c\nint threshold = (int)low + offset;  // 300 + (-50) = 250, as int\nif ((int)r->pressure < threshold) { ... }\n```\n\n**Or better \u2014 just use int from the start:**\n```c\nint low = 300;\nint offset = -50;\nif (r->pressure < (low + offset)) { ... }  // clean signed arithmetic\n```\n\n**Lesson:** Mixing signed and unsigned in arithmetic/comparisons is one of C's most dangerous traps. The implicit conversion rules (to unsigned) are counterintuitive and cause silent bugs.",
+      "testCases": [
+        {
+          "description": "Good reading accepted",
+          "expected": "Reading OK: temp=250"
+        },
+        {
+          "description": "Cold reading accepted",
+          "expected": "Reading OK: temp=-200"
+        },
+        {
+          "description": "Bad pressure should fail",
+          "expected": "Pressure too low: 100"
+        }
+      ],
+      "hints": [
+        "What type is the result of (unsigned int + int)?",
+        "What happens when a negative int is implicitly converted to unsigned?",
+        "Is the humidity < 0 check doing anything useful?"
+      ]
+    },
+    {
+      "id": "bug-005",
+      "category": "spot-the-bug",
+      "title": "Use-After-Free in a Linked List",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "use-after-free",
+        "linked-list",
+        "memory",
+        "dangling-pointer"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This linked list removal function has a use-after-free bug. Find it and fix it.",
+      "starterCode": "#include <cstdio>\n#include <cstdlib>\n\ntypedef struct node {\n    int data;\n    struct node* next;\n} node_t;\n\nvoid push(node_t** head, int val) {\n    node_t* n = (node_t*)malloc(sizeof(node_t));\n    n->data = val;\n    n->next = *head;\n    *head = n;\n}\n\n// Remove all nodes with matching value\nvoid remove_all(node_t** head, int val) {\n    node_t* curr = *head;\n    node_t* prev = NULL;\n\n    while (curr != NULL) {\n        if (curr->data == val) {\n            if (prev == NULL) {\n                *head = curr->next;\n            } else {\n                prev->next = curr->next;\n            }\n            free(curr);\n            curr = curr->next;  // BUG: where is this reading from?\n        } else {\n            prev = curr;\n            curr = curr->next;\n        }\n    }\n}\n\nvoid print_list(node_t* head) {\n    printf(\"List: \");\n    while (head) {\n        printf(\"%d -> \", head->data);\n        head = head->next;\n    }\n    printf(\"NULL\\n\");\n}\n\nvoid free_list(node_t* head) {\n    while (head) {\n        node_t* tmp = head;\n        head = head->next;\n        free(tmp);\n    }\n}\n\nint main() {\n    node_t* list = NULL;\n    push(&list, 1);\n    push(&list, 3);\n    push(&list, 2);\n    push(&list, 3);\n    push(&list, 3);\n    push(&list, 4);\n\n    printf(\"Before: \");\n    print_list(list);\n\n    remove_all(&list, 3);\n\n    printf(\"After removing 3s: \");\n    print_list(list);\n\n    free_list(list);\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug:** `free(curr)` then `curr = curr->next` reads from freed memory.\n\nAfter `free(curr)`, the memory at `curr` is released. Accessing `curr->next` is **undefined behavior** \u2014 it might work, crash, or return garbage (especially if the allocator reuses the memory immediately).\n\n**Fix: Save `next` before freeing:**\n```c\nif (curr->data == val) {\n    node_t* tmp = curr;          // save pointer\n    if (prev == NULL) {\n        *head = curr->next;\n    } else {\n        prev->next = curr->next;\n    }\n    curr = curr->next;           // advance BEFORE freeing\n    free(tmp);                   // now safe to free\n} else {\n```\n\n**Why it \"works\" sometimes:** Most allocators don't immediately zero freed memory. The `next` pointer is still physically present in the freed block \u2014 it just isn't valid anymore. With AddressSanitizer (`-fsanitize=address`) or Valgrind, this lights up immediately.\n\n**In embedded without an OS:** This is even more dangerous. A bare-metal allocator might immediately reuse the block for the next ISR allocation, corrupting the list traversal silently.",
+      "testCases": [
+        {
+          "description": "List before removal",
+          "expected": "Before:"
+        },
+        {
+          "description": "3s removed",
+          "expected": "After removing 3s:"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "What does curr point to AFTER free(curr)?",
+        "How do you save the next pointer before destroying the node?",
+        "What tool would catch this automatically?"
+      ]
+    },
+    {
+      "id": "bug-006",
+      "category": "spot-the-bug",
+      "title": "Read-Modify-Write Race on Hardware Register",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "read-modify-write",
+        "register",
+        "atomic",
+        "ISR",
+        "embedded",
+        "peripheral"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This GPIO driver uses read-modify-write to set individual pins. It works in single-threaded tests but glitches in production when ISRs and main code both toggle pins. Find the race condition and fix it.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n\n// Simulated hardware register (in real code: volatile uint32_t* at MMIO address)\nstatic volatile uint32_t GPIO_OUT = 0x00000000;\n\n// Read current state for verification\nuint32_t gpio_read(void) {\n    return GPIO_OUT;\n}\n\nvoid gpio_set_pin(int pin) {\n    // Read-modify-write\n    uint32_t val = GPIO_OUT;    // READ\n    val |= (1U << pin);         // MODIFY\n    GPIO_OUT = val;              // WRITE\n}\n\nvoid gpio_clear_pin(int pin) {\n    uint32_t val = GPIO_OUT;\n    val &= ~(1U << pin);\n    GPIO_OUT = val;\n}\n\n// Called from main code\nvoid enable_led(void) {\n    printf(\"Main: enabling LED (pin 4)\\n\");\n    gpio_set_pin(4);\n}\n\n// Called from timer ISR\nvoid timer_isr_handler(void) {\n    // Toggle heartbeat LED on pin 7\n    if (GPIO_OUT & (1U << 7)) {\n        gpio_clear_pin(7);\n    } else {\n        gpio_set_pin(7);\n    }\n}\n\nint main() {\n    printf(\"Initial GPIO: 0x%08X\\n\", gpio_read());\n\n    // Simulate the race:\n    // Main code starts to set pin 4...\n    uint32_t val = GPIO_OUT;     // Main reads: 0x00\n    val |= (1U << 4);           // Main prepares: 0x10\n\n    // ISR fires RIGHT HERE, between read and write!\n    printf(\"--- ISR fires mid-operation ---\\n\");\n    timer_isr_handler();         // ISR sets pin 7: GPIO = 0x80\n    printf(\"After ISR: GPIO = 0x%08X\\n\", gpio_read());\n\n    // Main resumes and writes its stale value\n    GPIO_OUT = val;              // Main writes: 0x10 (OVERWRITES pin 7!)\n    printf(\"After main resumes: GPIO = 0x%08X\\n\", gpio_read());\n\n    printf(\"Pin 4 (LED): %s\\n\", (GPIO_OUT & (1U << 4)) ? \"ON\" : \"OFF\");\n    printf(\"Pin 7 (heartbeat): %s\\n\", (GPIO_OUT & (1U << 7)) ? \"ON\" : \"OFF\");\n\n    // Pin 7 should be ON but got clobbered!\n    if (!(GPIO_OUT & (1U << 7))) {\n        printf(\"BUG: Pin 7 was lost in the race!\\n\");\n    }\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: Non-atomic read-modify-write on a shared register.**\n\nThe sequence `read \u2192 modify \u2192 write` is not atomic. If an ISR fires between the read and write, the ISR's changes get overwritten when main writes its stale copy.\n\n```\nMain:  reads GPIO = 0x00\nMain:  prepares val = 0x10 (set pin 4)\n       --- ISR fires ---\nISR:   reads GPIO = 0x00, writes 0x80 (set pin 7)\n       --- ISR returns ---\nMain:  writes 0x10 \u2192 GPIO (pin 7 LOST!)\n```\n\n**Fix 1: Disable interrupts around RMW (most common in embedded):**\n```c\nvoid gpio_set_pin(int pin) {\n    __disable_irq();\n    GPIO_OUT |= (1U << pin);\n    __enable_irq();\n}\n```\n\n**Fix 2: Use hardware SET/CLR registers (best on real MCUs):**\nMost MCUs have dedicated `GPIOx_BSRR` (set) and `GPIOx_BRR` (clear) registers that are atomic single-write operations:\n```c\nvoid gpio_set_pin(int pin) {\n    GPIO_SET = (1U << pin);  // Write-only, sets just this bit\n}\nvoid gpio_clear_pin(int pin) {\n    GPIO_CLR = (1U << pin);  // Write-only, clears just this bit\n}\n```\nNo read-modify-write needed. No race possible.\n\n**Fix 3: Atomic bit-banding (Cortex-M):**\nARM Cortex-M has a bit-band region that maps each bit to a word address \u2014 single-write atomic bit manipulation.\n\n**The lesson:** Every read-modify-write on shared hardware is a potential race. Use atomic operations, hardware SET/CLR registers, or interrupt guards.",
+      "testCases": [
+        {
+          "description": "Race demonstrated",
+          "expected": "BUG: Pin 7 was lost"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "What happens if an ISR fires between reading and writing the register?",
+        "Most real MCUs have SET and CLEAR registers \u2014 why?",
+        "What's the simplest fix on a single-core MCU?"
+      ]
+    },
+    {
+      "id": "bug-007",
+      "category": "spot-the-bug",
+      "title": "The Dangling Pointer Return",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "dangling-pointer",
+        "stack",
+        "lifetime",
+        "undefined-behavior"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This utility function formats a status string and returns it. It compiles cleanly but the caller gets garbage. Find the bug.",
+      "starterCode": "#include <cstdio>\n#include <cstring>\n\nconst char* format_status(int code, int temp) {\n    char result[64];\n    snprintf(result, sizeof(result), \"Status: %d, Temp: %d C\", code, temp);\n    return result;\n}\n\nconst char* get_error_msg(int code) {\n    switch (code) {\n        case 0: return \"OK\";\n        case 1: return \"TIMEOUT\";\n        case 2: return \"CRC_ERROR\";\n        default: {\n            char msg[32];\n            snprintf(msg, sizeof(msg), \"UNKNOWN(%d)\", code);\n            return msg;\n        }\n    }\n}\n\nint main() {\n    // Test 1\n    const char* status = format_status(0, 25);\n    printf(\"Status: %s\\n\", status);  // Might print garbage!\n\n    // Test 2 - known codes work fine\n    printf(\"Error 0: %s\\n\", get_error_msg(0));\n    printf(\"Error 1: %s\\n\", get_error_msg(1));\n\n    // Test 3 - unknown code: same dangling pointer bug\n    const char* err = get_error_msg(99);\n    printf(\"Error 99: %s\\n\", err);  // Garbage!\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: Returning pointer to local (stack) variable.**\n\n`result` in `format_status` and `msg` in `get_error_msg`'s default case are local arrays on the stack. When the function returns, the stack frame is reclaimed. The returned pointer is **dangling** \u2014 it points to memory that may be overwritten by the next function call.\n\nNote: `get_error_msg` cases 0-2 are fine \u2014 string literals have static storage duration.\n\n**Why it sometimes \"works\":** The stack memory isn't immediately zeroed. If nothing else uses that stack space before `printf`, the data might still be intact. But any function call (including `printf` itself!) can overwrite it.\n\n**Fix options:**\n\n**1. Static buffer (simple, not thread-safe):**\n```c\nconst char* format_status(int code, int temp) {\n    static char result[64];  // persists across calls\n    snprintf(result, sizeof(result), \"Status: %d, Temp: %d C\", code, temp);\n    return result;\n}\n```\n\n**2. Caller-provided buffer (best for embedded):**\n```c\nvoid format_status(int code, int temp, char* buf, size_t buflen) {\n    snprintf(buf, buflen, \"Status: %d, Temp: %d C\", code, temp);\n}\n```\n\n**3. Heap allocation (avoid in embedded):**\n```c\nchar* format_status(int code, int temp) {\n    char* result = (char*)malloc(64);\n    snprintf(result, 64, \"Status: %d, Temp: %d C\", code, temp);\n    return result;  // caller must free()\n}\n```\n\n**Best practice in firmware:** Option 2. The caller owns the buffer, no hidden state, no allocation, clear lifetime.",
+      "testCases": [
+        {
+          "description": "Status printed",
+          "expected": "Status:"
+        },
+        {
+          "description": "Known errors work",
+          "expected": "Error 0: OK"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "Where does a local array live? What happens to it when the function returns?",
+        "Why do the string literal returns (cases 0-2) work fine?",
+        "What's the embedded-friendly fix that avoids heap allocation?"
+      ]
+    },
+    {
+      "id": "bug-008",
+      "category": "spot-the-bug",
+      "title": "sizeof on Decayed Array",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "sizeof",
+        "array-decay",
+        "pointer",
+        "C-trap",
+        "buffer"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This CRC function works perfectly in `main()` but produces wrong results when called from `process_packet()`. The algorithm is correct. Find the bug.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n\nuint8_t compute_crc(uint8_t data[]) {\n    uint8_t crc = 0xFF;\n    size_t len = sizeof(data);  // How many bytes?\n\n    printf(\"  Computing CRC over %zu bytes\\n\", len);\n    for (size_t i = 0; i < len; i++) {\n        crc ^= data[i];\n        for (int j = 0; j < 8; j++) {\n            crc = (crc & 0x80) ? ((crc << 1) ^ 0x07) : (crc << 1);\n        }\n    }\n    return crc;\n}\n\nvoid process_packet(uint8_t packet[]) {\n    printf(\"Processing packet of %zu bytes\\n\", sizeof(packet));\n    uint8_t crc = compute_crc(packet);\n    printf(\"Packet CRC: 0x%02X\\n\", crc);\n}\n\nint main() {\n    uint8_t data[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};\n\n    // Direct computation in main - sizeof works here!\n    printf(\"In main: sizeof(data) = %zu\\n\", sizeof(data));\n\n    // Through function - sizeof is WRONG\n    printf(\"\\nThrough function:\\n\");\n    process_packet(data);\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: `sizeof(data)` in the function gives the size of a POINTER, not the array.**\n\nWhen you pass an array to a function, it **decays** to a pointer. The parameter `uint8_t data[]` is identical to `uint8_t* data`. So:\n\n```c\n// In main:\nsizeof(data)  // = 8 (8 elements \u00d7 1 byte) \u2713\n\n// In compute_crc:\nsizeof(data)  // = 8 on 64-bit, 4 on 32-bit (pointer size!) \u2717\n```\n\nOn a 64-bit system it happens to give 8, which matches the test data length \u2014 the bug is **invisible**! On a 32-bit MCU it gives 4, only processing half the data.\n\n**Fix: Always pass the length explicitly:**\n```c\nuint8_t compute_crc(const uint8_t* data, size_t len) {\n    uint8_t crc = 0xFF;\n    for (size_t i = 0; i < len; i++) {\n        // ...\n    }\n    return crc;\n}\n\nvoid process_packet(const uint8_t* packet, size_t len) {\n    uint8_t crc = compute_crc(packet, len);\n}\n\n// Call with:\nprocess_packet(data, sizeof(data));  // sizeof works here, in the declaring scope\n```\n\n**The rule:** `sizeof` on an array parameter is ALWAYS a bug. GCC/Clang flag this with `-Wsizeof-array-argument`. Enable it.\n\n**Bonus trap:** `uint8_t data[8]` as a function parameter does NOT create a fixed-size array \u2014 it's still just a pointer. The `8` is ignored by the compiler.",
+      "testCases": [
+        {
+          "description": "Shows sizeof in main",
+          "expected": "In main: sizeof(data) = 8"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "What happens to an array when you pass it to a function in C?",
+        "What does sizeof give you for a pointer vs an actual array?",
+        "Why might this bug be invisible on a 64-bit machine?"
+      ]
+    },
+    {
+      "id": "bug-009",
+      "category": "spot-the-bug",
+      "title": "Stack Overflow in Recursive Parser",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "stack-overflow",
+        "recursion",
+        "embedded",
+        "limited-stack",
+        "parsing"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This recursive-descent JSON-ish config parser works on a desktop but crashes on an embedded target with 4KB stack. Find the stack overflow risk and refactor to fix it.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n#include <cstring>\n\n#define MAX_DEPTH 64\n#define MAX_KEY_LEN 32\n#define MAX_VAL_LEN 64\n\ntypedef struct {\n    char key[MAX_KEY_LEN];\n    char value[MAX_VAL_LEN];\n    int depth;\n} config_entry_t;\n\nstatic int entry_count = 0;\nstatic config_entry_t entries[32];\n\n// Parse a nested config block recursively\nvoid parse_block(const char* input, int* pos, int depth) {\n    char key[MAX_KEY_LEN];\n    char value[MAX_VAL_LEN];\n    char buffer[256];  // scratch buffer for processing\n\n    if (depth > MAX_DEPTH) {\n        printf(\"Max depth exceeded\\n\");\n        return;\n    }\n\n    while (input[*pos] != '\\0' && input[*pos] != '}') {\n        // Skip whitespace\n        while (input[*pos] == ' ' || input[*pos] == '\\n') (*pos)++;\n\n        if (input[*pos] == '{') {\n            (*pos)++;\n            parse_block(input, pos, depth + 1);  // RECURSE\n            if (input[*pos] == '}') (*pos)++;\n            continue;\n        }\n\n        // Parse key=value\n        int k = 0;\n        while (input[*pos] != '=' && input[*pos] != '\\0' && k < MAX_KEY_LEN - 1) {\n            key[k++] = input[*pos];\n            (*pos)++;\n        }\n        key[k] = '\\0';\n\n        if (input[*pos] == '=') (*pos)++;\n\n        int v = 0;\n        while (input[*pos] != '\\n' && input[*pos] != '\\0' && input[*pos] != '}' && v < MAX_VAL_LEN - 1) {\n            value[v++] = input[*pos];\n            (*pos)++;\n        }\n        value[v] = '\\0';\n\n        // Store entry\n        if (entry_count < 32) {\n            snprintf(buffer, sizeof(buffer), \"[%d] %s = %s\", depth, key, value);\n            printf(\"  %s\\n\", buffer);\n            strncpy(entries[entry_count].key, key, MAX_KEY_LEN);\n            strncpy(entries[entry_count].value, value, MAX_VAL_LEN);\n            entries[entry_count].depth = depth;\n            entry_count++;\n        }\n    }\n}\n\nint main() {\n    const char* config =\n        \"name=sensor1\\n\"\n        \"rate=100\\n\"\n        \"{type=temperature\\n\"\n        \" unit=celsius\\n\"\n        \" {min=-40\\n\"\n        \"  max=125\\n\"\n        \" }\\n\"\n        \"}\\n\"\n        \"enabled=true\\n\";\n\n    printf(\"Parsing config:\\n\");\n    int pos = 0;\n    parse_block(config, &pos, 0);\n    printf(\"\\nParsed %d entries\\n\", entry_count);\n\n    // Stack usage per call: key(32) + value(64) + buffer(256) + overhead \u2248 400 bytes\n    // At MAX_DEPTH=64: 64 \u00d7 400 = 25,600 bytes of stack!\n    // On a 4KB stack MCU: CRASH at depth ~10\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug: Each recursive call uses ~400 bytes of stack. With MAX_DEPTH=64, worst case is ~25KB \u2014 instant death on a 4KB embedded stack.**\n\nStack per frame:\n- `key[32]` = 32 bytes\n- `value[64]` = 64 bytes  \n- `buffer[256]` = 256 bytes\n- Function overhead (return addr, saved regs, pos, depth) \u2248 32 bytes\n- **Total: ~384 bytes per recursion level**\n\nAt depth 10: 3,840 bytes \u2192 4KB stack is gone.\n\n**Fix 1: Move buffers to static/global (simplest):**\n```c\nvoid parse_block(const char* input, int* pos, int depth) {\n    static char key[MAX_KEY_LEN];      // shared, not reentrant\n    static char value[MAX_VAL_LEN];    // but recursion is sequential\n    static char buffer[256];\n    // Now each frame is only ~32 bytes\n    // ...\n```\nCaveat: not reentrant/thread-safe.\n\n**Fix 2: Convert to iterative with explicit stack (best):**\n```c\ntypedef struct { int pos; int depth; } parse_state_t;\n\nvoid parse_config(const char* input) {\n    parse_state_t stack[MAX_DEPTH];\n    int sp = 0;\n    char key[MAX_KEY_LEN], value[MAX_VAL_LEN];\n    // One set of buffers, explicit depth tracking\n    // ...\n}\n```\n\n**Fix 3: Reduce MAX_DEPTH + reduce buffer sizes:**\n```c\n#define MAX_DEPTH 8       // realistic for embedded configs\n#define MAX_KEY_LEN 16\n#define MAX_VAL_LEN 32\n// Stack per frame: ~80 bytes \u00d7 8 = 640 bytes \u2713\n```\n\n**The lesson:** On embedded targets, always calculate worst-case stack depth. Tools like `-fstack-usage` (GCC) report per-function stack frames. Multiply by max recursion depth. If it doesn't fit, refactor to iterative.",
+      "testCases": [
+        {
+          "description": "Parses entries",
+          "expected": "Parsed"
+        },
+        {
+          "description": "Finds name",
+          "expected": "name = sensor1"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "Add up the sizes of all local variables in parse_block. That's ONE stack frame.",
+        "Multiply by MAX_DEPTH \u2014 does it fit in 4KB?",
+        "What GCC flag shows you per-function stack usage?"
+      ]
+    },
+    {
+      "id": "bug-010",
+      "category": "spot-the-bug",
+      "title": "DMA Buffer Alignment Fault",
+      "difficulty": "hard",
+      "type": "coding",
+      "tags": [
+        "DMA",
+        "alignment",
+        "cache",
+        "memory",
+        "embedded",
+        "hard-fault"
+      ],
+      "companies": [
+        "general"
+      ],
+      "question": "This DMA transfer setup works on some MCUs but causes a hard fault or data corruption on others. There are TWO alignment-related bugs. Find them both.",
+      "starterCode": "#include <cstdio>\n#include <cstdint>\n#include <cstring>\n\n// Simulated DMA transfer (in real code: writes to DMA controller registers)\ntypedef struct {\n    uint32_t src_addr;\n    uint32_t dst_addr;\n    uint32_t count;\n    uint32_t config;\n} dma_descriptor_t;\n\n// BUG: Struct packing may misalign fields\n#pragma pack(push, 1)\ntypedef struct {\n    uint8_t  header;\n    uint32_t timestamp;    // offset 1 \u2014 misaligned!\n    uint16_t sensor_id;\n    uint8_t  data[64];\n    uint16_t checksum;\n} __attribute__((packed)) sensor_packet_t;\n#pragma pack(pop)\n\n// DMA buffer \u2014 should be cache-line aligned for DMA\nstatic uint8_t dma_buffer[256];\n\nint setup_dma_transfer(sensor_packet_t* packet) {\n    printf(\"Packet address: %p\\n\", (void*)packet);\n    printf(\"Timestamp field offset: %zu\\n\",\n           (size_t)((uint8_t*)&packet->timestamp - (uint8_t*)packet));\n    printf(\"DMA buffer address: %p\\n\", (void*)dma_buffer);\n\n    // Check alignment\n    if ((uintptr_t)dma_buffer % 4 != 0) {\n        printf(\"WARNING: DMA buffer not 4-byte aligned\\n\");\n    }\n\n    // Copy packet to DMA buffer\n    memcpy(dma_buffer, packet, sizeof(sensor_packet_t));\n\n    // Setup DMA descriptor\n    dma_descriptor_t desc;\n    desc.src_addr = (uint32_t)(uintptr_t)dma_buffer;\n    desc.dst_addr = 0x40001000;  // peripheral register\n    desc.count = sizeof(sensor_packet_t);\n    desc.config = 0x01;  // enable\n\n    printf(\"DMA transfer: %u bytes from 0x%08X\\n\", desc.count, desc.src_addr);\n\n    // Simulate reading back the timestamp via DMA buffer pointer\n    uint32_t* ts_ptr = (uint32_t*)(dma_buffer + 1);  // offset 1 in buffer\n    printf(\"Timestamp via pointer: %u\\n\", *ts_ptr);  // POTENTIAL FAULT\n\n    return 0;\n}\n\nint main() {\n    sensor_packet_t pkt;\n    pkt.header = 0xAA;\n    pkt.timestamp = 1234567890;\n    pkt.sensor_id = 42;\n    memset(pkt.data, 0x55, sizeof(pkt.data));\n    pkt.checksum = 0xBEEF;\n\n    printf(\"sizeof(sensor_packet_t) = %zu\\n\", sizeof(sensor_packet_t));\n    printf(\"Expected without packing: %zu\\n\", (size_t)76);  // with padding\n\n    setup_dma_transfer(&pkt);\n\n    printf(\"Done\\n\");\n    return 0;\n}",
+      "answer": "**Bug 1: Packed struct causes unaligned access to `timestamp`.**\n\nWith `__attribute__((packed))`, `timestamp` (a `uint32_t`) sits at offset 1 \u2014 not 4-byte aligned. On ARM Cortex-M0/M3, unaligned 32-bit access causes a **HardFault**. On Cortex-M4+, it works but is slower. On x86, it works but with a performance penalty.\n\nThe cast `uint32_t* ts_ptr = (uint32_t*)(dma_buffer + 1)` then dereferences a misaligned pointer \u2014 undefined behavior.\n\n**Bug 2: DMA buffer is not cache-line aligned.**\n\n`static uint8_t dma_buffer[256]` has no alignment guarantee beyond 1 byte. DMA controllers typically require:\n- 4-byte alignment minimum (word-aligned)\n- 32-byte alignment for cache coherency (cache line size)\n\nWithout proper alignment, DMA can corrupt adjacent data when the cache controller writes back a full cache line.\n\n**Fix:**\n```c\n// Fix struct: use explicit field access, not packed struct for DMA\ntypedef struct {\n    uint8_t  header;\n    uint8_t  _pad[3];        // explicit padding\n    uint32_t timestamp;       // now at offset 4 \u2014 aligned\n    uint16_t sensor_id;\n    uint8_t  _pad2[2];\n    uint8_t  data[64];\n    uint16_t checksum;\n    uint8_t  _pad3[2];\n} sensor_packet_t;\n\n// If you MUST use packed for wire format, use memcpy to access fields:\nuint32_t ts;\nmemcpy(&ts, &packet->timestamp, sizeof(ts));  // safe unaligned access\n\n// Fix DMA buffer alignment:\nstatic uint8_t dma_buffer[256] __attribute__((aligned(32)));\n// or: alignas(32) static uint8_t dma_buffer[256];\n\n// Fix pointer access:\nuint32_t ts;\nmemcpy(&ts, dma_buffer + 1, sizeof(ts));  // memcpy handles alignment\n```\n\n**The lesson:** Packed structs and DMA are a dangerous combination. Use `memcpy` for field access in packed/wire-format structs, and always align DMA buffers to the cache line size.",
+      "testCases": [
+        {
+          "description": "Shows struct size",
+          "expected": "sizeof(sensor_packet_t)"
+        },
+        {
+          "description": "DMA transfer setup",
+          "expected": "DMA transfer:"
+        },
+        {
+          "description": "Completes",
+          "expected": "Done"
+        }
+      ],
+      "hints": [
+        "What offset is timestamp at in the packed struct? Is that alignment valid for uint32_t?",
+        "What alignment does a DMA buffer need? What alignment does a plain uint8_t array get?",
+        "What's the safe way to read a uint32_t from an unaligned address?"
       ]
     }
   ]
