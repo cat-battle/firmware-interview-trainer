@@ -2480,6 +2480,198 @@
         "For the function parameter: change one character in the signature.",
         "For the container: what should you store instead of Base objects?"
       ]
+    },
+    {
+      "id": "ds-002",
+      "category": "data-structures",
+      "title": "Implement a Priority Queue (Min-Heap)",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "heap",
+        "priority-queue",
+        "data-structures",
+        "RTOS",
+        "scheduler"
+      ],
+      "question": "Implement a min-heap-based priority queue in C. Support insert, extract_min, and peek operations. Priority queues are used in RTOS task schedulers, timer management (earliest deadline first), and event-driven firmware architectures. Use a fixed-size array (no dynamic allocation).",
+      "answer": "```c\n#include <stdio.h>\n#include <stdbool.h>\n\n#define MAX_HEAP 128\n\ntypedef struct { int priority; int data; } HeapItem;\n\ntypedef struct {\n    HeapItem items[MAX_HEAP];\n    int size;\n} MinHeap;\n\nvoid heap_init(MinHeap *h) { h->size = 0; }\nbool heap_empty(MinHeap *h) { return h->size == 0; }\nbool heap_full(MinHeap *h) { return h->size >= MAX_HEAP; }\n\nstatic void swap(HeapItem *a, HeapItem *b) {\n    HeapItem t = *a; *a = *b; *b = t;\n}\n\nbool heap_insert(MinHeap *h, int priority, int data) {\n    if (heap_full(h)) return false;\n    int i = h->size++;\n    h->items[i] = (HeapItem){priority, data};\n    // Bubble up\n    while (i > 0) {\n        int parent = (i - 1) / 2;\n        if (h->items[i].priority < h->items[parent].priority) {\n            swap(&h->items[i], &h->items[parent]);\n            i = parent;\n        } else break;\n    }\n    return true;\n}\n\nbool heap_extract_min(MinHeap *h, HeapItem *out) {\n    if (heap_empty(h)) return false;\n    *out = h->items[0];\n    h->items[0] = h->items[--h->size];\n    // Bubble down\n    int i = 0;\n    while (1) {\n        int left = 2*i + 1, right = 2*i + 2, smallest = i;\n        if (left < h->size && h->items[left].priority < h->items[smallest].priority)\n            smallest = left;\n        if (right < h->size && h->items[right].priority < h->items[smallest].priority)\n            smallest = right;\n        if (smallest == i) break;\n        swap(&h->items[i], &h->items[smallest]);\n        i = smallest;\n    }\n    return true;\n}\n```\n\n**Complexity:** Insert O(log n), Extract O(log n), Peek O(1).\n\n**Firmware uses:**\n- RTOS scheduler: tasks sorted by priority, O(log n) to find next task\n- Timer wheel: earliest-expiring timer at the top\n- Event queue: highest-priority event processed first\n- Dijkstra's algorithm in network routing firmware\n\n**Why array-based (no malloc):** Embedded systems often forbid dynamic allocation after init. Fixed array = deterministic memory, no fragmentation, cache-friendly.",
+      "starterCode": "#include <stdio.h>\n#include <stdbool.h>\n\n#define MAX_HEAP 64\n\ntypedef struct { int priority; int data; } HeapItem;\n\ntypedef struct {\n    HeapItem items[MAX_HEAP];\n    int size;\n} MinHeap;\n\nvoid heap_init(MinHeap *h) { h->size = 0; }\n\nbool heap_insert(MinHeap *h, int priority, int data) {\n    // Insert and bubble up\n    return false;\n}\n\nbool heap_extract_min(MinHeap *h, HeapItem *out) {\n    // Extract root and bubble down\n    return false;\n}\n\nint main() {\n    MinHeap h;\n    heap_init(&h);\n\n    heap_insert(&h, 5, 100);\n    heap_insert(&h, 1, 200);\n    heap_insert(&h, 3, 300);\n    heap_insert(&h, 2, 400);\n    heap_insert(&h, 4, 500);\n\n    HeapItem item;\n    while (heap_extract_min(&h, &item))\n        printf(\"pri=%d data=%d\\n\", item.priority, item.data);\n\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Lowest priority first",
+          "expected": "pri=1 data=200"
+        },
+        {
+          "description": "Second lowest",
+          "expected": "pri=2 data=400"
+        },
+        {
+          "description": "All items extracted in order",
+          "expected": "pri=5 data=100"
+        }
+      ]
+    },
+    {
+      "id": "ds-003",
+      "category": "data-structures",
+      "title": "Hash Table with Linear Probing",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "hash-table",
+        "data-structures",
+        "open-addressing",
+        "firmware",
+        "lookup"
+      ],
+      "question": "Implement a fixed-size hash table with linear probing (open addressing) for integer keys. Support insert, lookup, and delete. Open addressing is preferred in firmware over chaining because it avoids dynamic allocation and has better cache locality. Handle deletions correctly using tombstones.",
+      "answer": "```c\n#include <stdio.h>\n#include <stdbool.h>\n#include <string.h>\n\n#define TABLE_SIZE 16  // Power of 2 for fast modulo\n#define EMPTY    0\n#define DELETED  1\n#define OCCUPIED 2\n\ntypedef struct {\n    int key;\n    int value;\n    int state;  // EMPTY, DELETED, or OCCUPIED\n} Entry;\n\ntypedef struct {\n    Entry entries[TABLE_SIZE];\n    int count;\n} HashTable;\n\nvoid ht_init(HashTable *t) {\n    memset(t, 0, sizeof(*t));\n}\n\nstatic int hash(int key) {\n    return ((unsigned)key * 2654435761u) >> 16 & (TABLE_SIZE - 1);\n}\n\nbool ht_insert(HashTable *t, int key, int value) {\n    if (t->count >= TABLE_SIZE * 3 / 4) return false; // Load factor limit\n    int idx = hash(key);\n    int first_deleted = -1;\n    for (int i = 0; i < TABLE_SIZE; i++) {\n        int probe = (idx + i) & (TABLE_SIZE - 1);\n        if (t->entries[probe].state == EMPTY) {\n            int slot = (first_deleted >= 0) ? first_deleted : probe;\n            t->entries[slot] = (Entry){key, value, OCCUPIED};\n            t->count++;\n            return true;\n        }\n        if (t->entries[probe].state == DELETED && first_deleted < 0)\n            first_deleted = probe;\n        if (t->entries[probe].state == OCCUPIED && t->entries[probe].key == key) {\n            t->entries[probe].value = value; // Update\n            return true;\n        }\n    }\n    return false;\n}\n\nbool ht_get(HashTable *t, int key, int *value) {\n    int idx = hash(key);\n    for (int i = 0; i < TABLE_SIZE; i++) {\n        int probe = (idx + i) & (TABLE_SIZE - 1);\n        if (t->entries[probe].state == EMPTY) return false;\n        if (t->entries[probe].state == OCCUPIED && t->entries[probe].key == key) {\n            *value = t->entries[probe].value;\n            return true;\n        }\n    }\n    return false;\n}\n\nbool ht_delete(HashTable *t, int key) {\n    int idx = hash(key);\n    for (int i = 0; i < TABLE_SIZE; i++) {\n        int probe = (idx + i) & (TABLE_SIZE - 1);\n        if (t->entries[probe].state == EMPTY) return false;\n        if (t->entries[probe].state == OCCUPIED && t->entries[probe].key == key) {\n            t->entries[probe].state = DELETED; // Tombstone!\n            t->count--;\n            return true;\n        }\n    }\n    return false;\n}\n```\n\n**Why tombstones (DELETED state)?**\nWith linear probing, if you just mark a slot as EMPTY on delete, you break the probe chain. Later lookups for keys that probed past that slot will stop too early and falsely report 'not found'. Tombstones keep the chain intact while allowing the slot to be reused by future inserts.\n\n**Firmware context:**\n- Command dispatch tables (command ID \u2192 handler function pointer)\n- Device registry (address \u2192 device struct)\n- Symbol tables in bootloader/debugger\n- Protocol session tracking (connection ID \u2192 state)\n\n**Why open addressing over chaining in firmware:**\n- No malloc/free needed (all in one contiguous array)\n- Better cache performance (sequential memory access during probing)\n- Predictable memory usage (fixed table size, no linked-list overhead)",
+      "starterCode": "#include <stdio.h>\n#include <stdbool.h>\n#include <string.h>\n\n#define TABLE_SIZE 16\n#define EMPTY 0\n#define DELETED 1\n#define OCCUPIED 2\n\ntypedef struct { int key, value, state; } Entry;\ntypedef struct { Entry entries[TABLE_SIZE]; int count; } HashTable;\n\nvoid ht_init(HashTable *t) { memset(t, 0, sizeof(*t)); }\n\nbool ht_insert(HashTable *t, int key, int value) {\n    // Linear probing insert\n    return false;\n}\n\nbool ht_get(HashTable *t, int key, int *value) {\n    // Linear probing lookup\n    return false;\n}\n\nbool ht_delete(HashTable *t, int key) {\n    // Delete with tombstone\n    return false;\n}\n\nint main() {\n    HashTable t;\n    ht_init(&t);\n\n    ht_insert(&t, 42, 100);\n    ht_insert(&t, 17, 200);\n    ht_insert(&t, 99, 300);\n\n    int val;\n    printf(\"get(42)=%s\", ht_get(&t, 42, &val) ? \"\" : \"miss\\n\");\n    if (ht_get(&t, 42, &val)) printf(\"%d\\n\", val);\n\n    printf(\"get(17)=%s\", ht_get(&t, 17, &val) ? \"\" : \"miss\\n\");\n    if (ht_get(&t, 17, &val)) printf(\"%d\\n\", val);\n\n    ht_delete(&t, 17);\n    printf(\"after delete(17): get(17)=%s\\n\", ht_get(&t, 17, &val) ? \"found\" : \"miss\");\n    printf(\"after delete(17): get(99)=%s\", ht_get(&t, 99, &val) ? \"\" : \"miss\\n\");\n    if (ht_get(&t, 99, &val)) printf(\"%d\\n\", val);\n\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Basic lookup",
+          "expected": "get(42)=100"
+        },
+        {
+          "description": "Second key",
+          "expected": "get(17)=200"
+        },
+        {
+          "description": "Deleted key is gone",
+          "expected": "after delete(17): get(17)=miss"
+        },
+        {
+          "description": "Tombstone doesn't break chain",
+          "expected": "after delete(17): get(99)=300"
+        }
+      ]
+    },
+    {
+      "id": "algo-002",
+      "category": "algorithms",
+      "title": "Binary Search on Sorted Firmware Version Table",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "binary-search",
+        "algorithms",
+        "firmware",
+        "lookup",
+        "version-table"
+      ],
+      "question": "Implement binary search to find a firmware component by its version ID in a sorted table. Return the index or -1 if not found. Then implement a variant that finds the insertion point (lower bound) for a version that may not exist. These patterns are used in bootloader version tables, sorted error code lookups, and register map searches.",
+      "answer": "```c\n#include <stdio.h>\n\ntypedef struct { int version_id; const char *name; } FwEntry;\n\n// Exact match: returns index or -1\nint fw_search(FwEntry *table, int n, int target) {\n    int lo = 0, hi = n - 1;\n    while (lo <= hi) {\n        int mid = lo + (hi - lo) / 2;  // Avoids overflow!\n        if (table[mid].version_id == target) return mid;\n        else if (table[mid].version_id < target) lo = mid + 1;\n        else hi = mid - 1;\n    }\n    return -1;\n}\n\n// Lower bound: returns first index where version_id >= target\nint fw_lower_bound(FwEntry *table, int n, int target) {\n    int lo = 0, hi = n;\n    while (lo < hi) {\n        int mid = lo + (hi - lo) / 2;\n        if (table[mid].version_id < target) lo = mid + 1;\n        else hi = mid;\n    }\n    return lo;  // Insertion point\n}\n```\n\n**Key details:**\n- `mid = lo + (hi - lo) / 2` prevents integer overflow that `(lo + hi) / 2` can cause on 32-bit systems when lo + hi > INT_MAX\n- Lower bound returns `n` if target is larger than all elements (valid insertion point)\n- O(log n) \u2014 for a 1024-entry register map, max 10 comparisons vs 1024 for linear scan\n\n**Firmware uses:**\n- Bootloader: search version compatibility table during OTA update\n- Error code lookup: binary search sorted error code \u2192 string table\n- Register map: find register descriptor by address in sorted peripheral table\n- Sorted interrupt vector lookup in configurable interrupt controllers",
+      "starterCode": "#include <stdio.h>\n\ntypedef struct { int version_id; const char *name; } FwEntry;\n\n// Return index of exact match, or -1\nint fw_search(FwEntry *table, int n, int target) {\n    // Your binary search implementation\n    return -1;\n}\n\n// Return first index where version_id >= target\nint fw_lower_bound(FwEntry *table, int n, int target) {\n    // Your lower-bound implementation\n    return n;\n}\n\nint main() {\n    FwEntry table[] = {\n        {100, \"bootloader\"},\n        {200, \"kernel\"},\n        {300, \"display-fw\"},\n        {400, \"radio-fw\"},\n        {500, \"sensor-hub\"},\n    };\n    int n = 5;\n\n    printf(\"search(300)=%d\\n\", fw_search(table, n, 300));   // 2\n    printf(\"search(100)=%d\\n\", fw_search(table, n, 100));   // 0\n    printf(\"search(500)=%d\\n\", fw_search(table, n, 500));   // 4\n    printf(\"search(250)=%d\\n\", fw_search(table, n, 250));   // -1\n\n    printf(\"lower_bound(300)=%d\\n\", fw_lower_bound(table, n, 300)); // 2\n    printf(\"lower_bound(250)=%d\\n\", fw_lower_bound(table, n, 250)); // 2\n    printf(\"lower_bound(600)=%d\\n\", fw_lower_bound(table, n, 600)); // 5\n    printf(\"lower_bound(50)=%d\\n\", fw_lower_bound(table, n, 50));   // 0\n\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Find middle element",
+          "expected": "search(300)=2"
+        },
+        {
+          "description": "Find first element",
+          "expected": "search(100)=0"
+        },
+        {
+          "description": "Missing element returns -1",
+          "expected": "search(250)=-1"
+        },
+        {
+          "description": "Lower bound exact match",
+          "expected": "lower_bound(300)=2"
+        },
+        {
+          "description": "Lower bound insertion point",
+          "expected": "lower_bound(250)=2"
+        },
+        {
+          "description": "Lower bound past end",
+          "expected": "lower_bound(600)=5"
+        }
+      ]
+    },
+    {
+      "id": "algo-003",
+      "category": "algorithms",
+      "title": "CRC-32 Implementation",
+      "difficulty": "medium",
+      "type": "coding",
+      "tags": [
+        "CRC",
+        "algorithms",
+        "checksum",
+        "firmware",
+        "protocols",
+        "data-integrity"
+      ],
+      "question": "Implement CRC-32 (IEEE 802.3) using a lookup table approach. CRC is fundamental in firmware for flash integrity checks, protocol frame validation (Ethernet, USB, storage), and OTA update verification. First generate the 256-entry lookup table, then implement the CRC calculation. Test against known vectors.",
+      "answer": "```c\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n\n#define CRC32_POLY 0xEDB88320  // Reversed polynomial (bit-reversed 0x04C11DB7)\n\nstatic uint32_t crc_table[256];\n\nvoid crc32_init_table(void) {\n    for (uint32_t i = 0; i < 256; i++) {\n        uint32_t crc = i;\n        for (int j = 0; j < 8; j++) {\n            if (crc & 1)\n                crc = (crc >> 1) ^ CRC32_POLY;\n            else\n                crc >>= 1;\n        }\n        crc_table[i] = crc;\n    }\n}\n\nuint32_t crc32(const uint8_t *data, size_t len) {\n    uint32_t crc = 0xFFFFFFFF;  // Init value\n    for (size_t i = 0; i < len; i++) {\n        uint8_t index = (crc ^ data[i]) & 0xFF;\n        crc = (crc >> 8) ^ crc_table[index];\n    }\n    return crc ^ 0xFFFFFFFF;  // Final XOR\n}\n```\n\n**How the lookup table works:**\nInstead of processing each bit individually (slow), we precompute the CRC contribution of every possible byte value. Each byte of input requires just one table lookup + XOR + shift instead of 8 iterations.\n\n**Performance:** 1 table lookup per byte vs 8 iterations per byte = ~4-8x speedup. The 1KB table easily fits in L1 cache.\n\n**Standard test vector:** CRC-32 of ASCII \"123456789\" = 0xCBF43926\n\n**Firmware uses:**\n- Flash integrity: CRC stored in flash header, verified at boot\n- OTA updates: validate firmware image before flashing\n- Protocol frames: Ethernet FCS, USB packets, storage block checksums\n- EEPROM wear detection: CRC detects bit-rot in stored config",
+      "starterCode": "#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n\n#define CRC32_POLY 0xEDB88320\n\nstatic uint32_t crc_table[256];\n\nvoid crc32_init_table(void) {\n    // Generate the 256-entry lookup table\n    // For each byte value 0-255, compute its CRC contribution\n}\n\nuint32_t crc32(const uint8_t *data, size_t len) {\n    // Compute CRC-32 using the lookup table\n    return 0;\n}\n\nint main() {\n    crc32_init_table();\n\n    // Standard test vector\n    const char *test = \"123456789\";\n    uint32_t result = crc32((const uint8_t *)test, strlen(test));\n    printf(\"CRC-32(\\\"123456789\\\") = 0x%08X\\n\", result);\n    printf(\"Expected:            0xCBF43926\\n\");\n    printf(\"Match: %s\\n\", result == 0xCBF43926 ? \"YES\" : \"NO\");\n\n    // Empty input\n    uint32_t empty = crc32((const uint8_t *)\"\", 0);\n    printf(\"CRC-32(\\\"\\\") = 0x%08X (expected 0x00000000)\\n\", empty);\n\n    // Single byte\n    uint8_t byte = 'A';\n    printf(\"CRC-32('A') = 0x%08X\\n\", crc32(&byte, 1));\n\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Standard test vector matches",
+          "expected": "Match: YES"
+        },
+        {
+          "description": "CRC computed for 123456789",
+          "expected": "0xCBF43926"
+        },
+        {
+          "description": "Empty string CRC",
+          "expected": "CRC-32(\"\") = 0x00000000"
+        }
+      ]
+    },
+    {
+      "id": "perf-003",
+      "category": "performance",
+      "title": "Branch Prediction: Sorted vs Unsorted Array Sum",
+      "difficulty": "easy",
+      "type": "coding",
+      "tags": [
+        "branch-prediction",
+        "performance",
+        "pipeline",
+        "optimization"
+      ],
+      "question": "A classic performance puzzle: sum all elements greater than 128 in a large array. Do this on unsorted data, then on sorted data, and observe the timing difference. Explain why sorted data is dramatically faster even though the same number of additions occur. Relate this to branch prediction in firmware tight loops.",
+      "answer": "```c\n#include <stdio.h>\n#include <stdlib.h>\n#include <time.h>\n#include <string.h>\n\n#define N 32768\n\nint cmp_int(const void *a, const void *b) {\n    return *(int*)a - *(int*)b;\n}\n\nint main() {\n    int *data = malloc(N * sizeof(int));\n    srand(42);\n    for (int i = 0; i < N; i++)\n        data[i] = rand() % 256;\n\n    // Unsorted\n    long long sum1 = 0;\n    clock_t t0 = clock();\n    for (int iter = 0; iter < 10000; iter++)\n        for (int i = 0; i < N; i++)\n            if (data[i] >= 128) sum1 += data[i];\n    clock_t t1 = clock();\n\n    // Sort, then same loop\n    qsort(data, N, sizeof(int), cmp_int);\n    long long sum2 = 0;\n    clock_t t2 = clock();\n    for (int iter = 0; iter < 10000; iter++)\n        for (int i = 0; i < N; i++)\n            if (data[i] >= 128) sum2 += data[i];\n    clock_t t3 = clock();\n\n    printf(\"Unsorted: %.3f sec (sum=%lld)\\n\",\n           (double)(t1-t0)/CLOCKS_PER_SEC, sum1);\n    printf(\"Sorted:   %.3f sec (sum=%lld)\\n\",\n           (double)(t3-t2)/CLOCKS_PER_SEC, sum2);\n    printf(\"Sums match: %s\\n\", sum1 == sum2 ? \"yes\" : \"no\");\n    free(data);\n}\n```\n\n**Why sorted is faster (branch prediction):**\n\nModern CPUs predict branch outcomes speculatively. The `if (data[i] >= 128)` branch has two patterns:\n\n- **Unsorted:** TTFFTFTFFTTFFT... \u2014 random, ~50% misprediction rate. Each misprediction costs ~15-20 cycles (pipeline flush).\n- **Sorted:** FFFFFFFFFF...TTTTTTTTT \u2014 long runs of same outcome. Predictor locks on. Misprediction only at the boundary (~1 time total).\n\nWith 32K elements \u00d7 10K iterations \u00d7 ~50% mispredict \u00d7 ~15 cycles = billions of wasted cycles for unsorted.\n\n**Firmware relevance:**\n- Sensor data filtering (threshold checks in tight ISR loops)\n- Packet classification (if/else chains in protocol parsers)\n- Display pipeline: alpha blending conditionals on per-pixel loops\n\n**Fix without sorting:** Use branchless code:\n```c\n// Branchless: no branch prediction dependency\nint mask = -(data[i] >= 128); // All 1s or all 0s\nsum += data[i] & mask;\n```",
+      "starterCode": "#include <stdio.h>\n#include <stdlib.h>\n#include <time.h>\n\n#define N 32768\n\nint cmp(const void *a, const void *b) { return *(int*)a - *(int*)b; }\n\nint main() {\n    int *data = malloc(N * sizeof(int));\n    srand(42);\n    for (int i = 0; i < N; i++)\n        data[i] = rand() % 256;\n\n    // TODO: Time the conditional sum on unsorted data\n    // TODO: Sort, then time the same conditional sum\n    // TODO: Print both times and verify sums match\n    // Hint: use clock() and run many iterations for measurable time\n\n    long long sum_unsorted = 0, sum_sorted = 0;\n    // Your implementation here...\n\n    printf(\"unsorted sum: %lld\\n\", sum_unsorted);\n    printf(\"sorted sum:   %lld\\n\", sum_sorted);\n    printf(\"match: %s\\n\", sum_unsorted == sum_sorted ? \"yes\" : \"no\");\n    free(data);\n    return 0;\n}",
+      "testCases": [
+        {
+          "description": "Sums match regardless of sort order",
+          "expected": "match: yes"
+        },
+        {
+          "description": "Unsorted sum computed",
+          "expected": "unsorted sum:"
+        },
+        {
+          "description": "Sorted sum computed",
+          "expected": "sorted sum:"
+        }
+      ]
+    },
+    {
+      "id": "perf-004",
+      "category": "performance",
+      "title": "Loop Unrolling and Strength Reduction",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "tags": [
+        "optimization",
+        "loop-unrolling",
+        "strength-reduction",
+        "compiler",
+        "performance"
+      ],
+      "question": "Explain loop unrolling and strength reduction as optimization techniques. For each, show a before/after C code example in a firmware context (e.g., copying a DMA buffer, computing an offset table). When should you manually unroll vs. trust the compiler? What are the downsides of aggressive unrolling on embedded targets?",
+      "answer": "**Loop Unrolling:**\nReduce loop overhead (branch, compare, increment) by doing multiple iterations per loop body.\n\n```c\n// BEFORE: tight copy loop, 1 byte per iteration\nvoid copy_buf(uint8_t *dst, const uint8_t *src, int n) {\n    for (int i = 0; i < n; i++)\n        dst[i] = src[i];\n}\n\n// AFTER: 4x unrolled\nvoid copy_buf_unrolled(uint8_t *dst, const uint8_t *src, int n) {\n    int i = 0;\n    for (; i <= n - 4; i += 4) {\n        dst[i]   = src[i];\n        dst[i+1] = src[i+1];\n        dst[i+2] = src[i+2];\n        dst[i+3] = src[i+3];\n    }\n    for (; i < n; i++)  // Handle remainder\n        dst[i] = src[i];\n}\n\n// BETTER: use word-sized copies (strength reduction + unroll)\nvoid copy_buf_words(uint32_t *dst, const uint32_t *src, int n_words) {\n    for (int i = 0; i < n_words; i++)\n        dst[i] = src[i];\n}\n```\n\n**Strength Reduction:**\nReplace expensive operations with cheaper equivalents.\n\n```c\n// BEFORE: multiply in every iteration\nvoid build_offset_table(int *table, int n, int stride) {\n    for (int i = 0; i < n; i++)\n        table[i] = i * stride;  // MUL each iteration\n}\n\n// AFTER: strength reduction \u2014 add instead of multiply\nvoid build_offset_table_fast(int *table, int n, int stride) {\n    int offset = 0;\n    for (int i = 0; i < n; i++) {\n        table[i] = offset;\n        offset += stride;  // ADD each iteration\n    }\n}\n\n// Division \u2192 shift (when divisor is power of 2)\nuint32_t bytes_to_words(uint32_t bytes) {\n    return bytes >> 2;  // Instead of bytes / 4\n}\n\n// Modulo \u2192 mask (power of 2)\nuint32_t ring_index(uint32_t idx, uint32_t size) {\n    return idx & (size - 1);  // Instead of idx % size\n}\n```\n\n**When to manually unroll:**\n- Compiler `-O0` or `-O1` (debug builds won't auto-unroll)\n- DSP-like inner loops the compiler doesn't recognize (interleaved register operations)\n- When you need explicit prefetch or barrier placement per N iterations\n\n**When to trust the compiler:**\n- `-O2` and above: GCC/Clang are excellent at unrolling\n- `-funroll-loops` flag for aggressive unrolling\n- Profile-guided optimization (PGO) with `-fprofile-use` knows exactly which loops are hot\n\n**Downsides on embedded:**\n- **Code size:** Unrolled loops are larger. On Cortex-M with 64KB flash, aggressive unrolling can blow your budget\n- **I-cache pressure:** Bigger loops may not fit in the instruction cache, causing net slowdown\n- **Thumb-2 code density:** ARM Thumb-2 is already compact; unrolling fights against this\n- Rule of thumb: unroll 2-4x max on Cortex-M; on Cortex-A with big caches, more is fine\n\n**Compiler pragmas:**\n```c\n#pragma GCC optimize(\"unroll-loops\")  // Per-function\n#pragma clang loop unroll_count(4)     // Per-loop (Clang)\n```",
+      "hints": [
+        "Think about what the loop overhead actually costs on a pipelined processor",
+        "Strength reduction is about replacing operations, not removing them",
+        "Consider both time AND space on a constrained MCU"
+      ]
     }
   ]
 }
