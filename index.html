@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Practice 120+ firmware and embedded systems interview questions with a live C compiler in your browser. Free, open-source, no signup required.">
+  <meta name="description" content="Practice 67+ firmware and embedded systems interview questions with a live C compiler in your browser. Free, open-source, no signup required.">
   <meta name="keywords" content="firmware interview, embedded systems, C programming, interview prep, RTOS, ARM, microcontroller, coding practice">
   <meta name="author" content="cat-battle">
 
@@ -11,13 +11,13 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://cat-battle.github.io/firmware-interview-trainer/">
   <meta property="og:title" content="Firmware Interview Trainer — Practice embedded systems questions with a live C compiler">
-  <meta property="og:description" content="120+ firmware-specific questions across 14 categories. Live C compilation, test case validation, timer mode, smart weak-area focus, progress tracking. Free and open-source.">
+  <meta property="og:description" content="67+ firmware-specific questions across 8 categories. Live C compilation, test case validation, timer mode, progress tracking. Free and open-source.">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://cat-battle.github.io/firmware-interview-trainer/">
   <meta name="twitter:title" content="Firmware Interview Trainer — Practice embedded systems questions with a live C compiler">
-  <meta name="twitter:description" content="120+ firmware-specific questions across 14 categories. Live C compilation, test case validation, timer mode, smart weak-area focus, progress tracking. Free and open-source.">
+  <meta name="twitter:description" content="67+ firmware-specific questions across 8 categories. Live C compilation, test case validation, timer mode, progress tracking. Free and open-source.">
 
   <title>🔧 Firmware Interview Trainer</title>
   <style>
@@ -141,23 +141,6 @@
     }
     .filter-select { width: 100%; margin-bottom: 0.4rem; }
     .filter-row select:focus, .filter-select:focus { outline: none; border-color: var(--accent); }
-
-    .focus-weak-btn {
-      width: 100%; padding: 0.5rem; border: 1px solid var(--warning);
-      background: rgba(210,153,34,0.1); color: var(--warning); border-radius: 6px;
-      cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: all 0.15s;
-      margin-bottom: 0.5rem;
-    }
-    .focus-weak-btn:hover { background: rgba(210,153,34,0.2); }
-    .focus-weak-btn.active { background: rgba(210,153,34,0.3); border-color: var(--warning); }
-
-    .export-import-row { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
-    .export-import-row button {
-      flex: 1; padding: 0.35rem; border: 1px solid var(--border);
-      background: var(--surface-hover); color: var(--text-muted); border-radius: 6px;
-      cursor: pointer; font-size: 0.78rem; transition: all 0.15s;
-    }
-    .export-import-row button:hover { color: var(--text); border-color: var(--text-muted); }
 
     .random-btn {
       width: 100%; padding: 0.5rem; background: var(--accent);
@@ -544,7 +527,6 @@
     <!-- Navigation -->
     <div class="sidebar-section">
       <h3>Navigation</h3>
-      <button class="focus-weak-btn" id="focusWeakBtn">🎯 Focus Weak Areas</button>
       <button class="random-btn" id="randomBtn">🎲 Random Question</button>
     </div>
 
@@ -567,11 +549,6 @@
       <h3>Progress</h3>
       <button class="clear-btn" id="clearAnswersBtn">✏️ Clear My Answers</button>
       <button class="clear-btn" id="clearProgressBtn">🗑 Clear All Progress</button>
-      <div class="export-import-row">
-        <button id="exportProgressBtn">📤 Export</button>
-        <button id="importProgressBtn">📥 Import</button>
-      </div>
-      <input type="file" id="importFileInput" accept=".json" style="display:none">
     </div>
 
   </aside>
@@ -600,7 +577,6 @@
       <span><kbd>N</kbd> next</span>
       <span><kbd>P</kbd> previous</span>
       <span><kbd>R</kbd> random</span>
-      <span><kbd>W</kbd> weak areas</span>
     </div>
 
     <!-- Question navigation bar -->
@@ -1160,19 +1136,15 @@ document.getElementById('runCodeBtn').addEventListener('click', async () => {
   if (q && q.id) markCodingAttempted(q.id);
   updateStats();
 
-  // Detect C++ code
-  const isCpp = /^\s*#\s*include\s*<(cstdio|cstdlib|cstring|cmath|iostream|fstream|sstream|vector|map|set|string|array|algorithm|memory|functional|numeric|queue|stack|deque|list|unordered_map|unordered_set|bitset|tuple|optional|variant|any|chrono|thread|mutex|atomic|regex|filesystem|cassert|cstdint|cstddef|climits|cfloat|cctype|ctime|typeinfo|stdexcept|utility|iterator|type_traits|initializer_list|new|limits)>/m.test(code) ||
-    /\b(std::|cout|cin|cerr|endl|nullptr|class\s+\w+|template\s*<|namespace\s+\w+|using\s+namespace|auto\s+\w+\s*=|constexpr|static_cast|dynamic_cast|reinterpret_cast|const_cast)\b/.test(code);
-
   try {
     const res = await fetch('https://wandbox.org/api/compile.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        compiler: isCpp ? 'gcc-head' : 'gcc-head-c',
+        compiler: 'gcc-head-c',
         code: code,
         options: '-Wall -Wextra',
-        'compiler-option-raw': isCpp ? '-std=c++17' : '-std=c11',
+        'compiler-option-raw': '-std=c11',
       }),
     });
 
@@ -1300,9 +1272,6 @@ function setupKeyboard() {
       case 'r': case 'R':
         randomQuestion();
         break;
-      case 'w': case 'W':
-        toggleFocusWeak();
-        break;
     }
   });
 }
@@ -1311,10 +1280,12 @@ function setupKeyboard() {
 // FILTER EVENTS
 // ─────────────────────────────────────────────
 document.getElementById('difficultyFilter').addEventListener('change', () => {
-  if (focusWeakActive) { applyWeakFilter(); } else { buildFilteredList(); showQuestion(0); }
+  buildFilteredList();
+  showQuestion(0);
 });
 document.getElementById('typeFilter').addEventListener('change', () => {
-  if (focusWeakActive) { applyWeakFilter(); } else { buildFilteredList(); showQuestion(0); }
+  buildFilteredList();
+  showQuestion(0);
 });
 
 // ─────────────────────────────────────────────
@@ -1407,154 +1378,6 @@ document.getElementById('clearProgressBtn').addEventListener('click', () => {
     updateStats();
     showQuestion(currentIndex);
   }
-});
-
-// ─────────────────────────────────────────────
-// FOCUS WEAK AREAS
-// ─────────────────────────────────────────────
-let focusWeakActive = false;
-
-document.getElementById('focusWeakBtn').addEventListener('click', toggleFocusWeak);
-
-function toggleFocusWeak() {
-  focusWeakActive = !focusWeakActive;
-  const btn = document.getElementById('focusWeakBtn');
-  btn.classList.toggle('active', focusWeakActive);
-  btn.textContent = focusWeakActive ? '🎯 Weak Areas ON' : '🎯 Focus Weak Areas';
-
-  if (focusWeakActive) {
-    applyWeakFilter();
-  } else {
-    buildFilteredList();
-    showQuestion(0);
-  }
-}
-
-function applyWeakFilter() {
-  // Get current category/difficulty/type filters
-  const checkedCats = Array.from(document.querySelectorAll('#categoryList input[type=checkbox]:checked'))
-    .map(cb => cb.value);
-  const difficulty = document.getElementById('difficultyFilter').value;
-  const type = document.getElementById('typeFilter').value;
-  const p = getProgress();
-
-  // Start with normal filters
-  let candidates = allQuestions.filter(q => {
-    if (!checkedCats.includes(q.category)) return false;
-    if (difficulty !== 'all' && q.difficulty !== difficulty) return false;
-    if (type !== 'all' && q.type !== type) return false;
-    return true;
-  });
-
-  // Score each question: lower = weaker = higher priority
-  const scored = candidates.map(q => {
-    let score = 0;
-    const confidence = (p.confidence || {})[q.id] || 0;
-    const viewed = (p.viewed || {})[q.id];
-    const codingAttempts = (p.coding || {})[q.id] || 0;
-
-    // Never viewed = highest priority
-    if (!viewed) score -= 100;
-    // Low confidence = high priority
-    score += confidence * 20;
-    // Coding questions never attempted
-    if (q.type === 'coding' && codingAttempts === 0) score -= 50;
-    // Harder questions worth more focus
-    if (q.difficulty === 'hard') score -= 10;
-    else if (q.difficulty === 'medium') score -= 5;
-
-    return { q, score };
-  });
-
-  // Sort by score (lowest first = weakest)
-  scored.sort((a, b) => a.score - b.score);
-
-  // Take the weakest half (at least 10)
-  const count = Math.max(10, Math.ceil(scored.length * 0.5));
-  filteredQuestions = scored.slice(0, count).map(s => s.q);
-
-  // Shuffle so it doesn't feel sequential
-  for (let i = filteredQuestions.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [filteredQuestions[i], filteredQuestions[j]] = [filteredQuestions[j], filteredQuestions[i]];
-  }
-
-  currentIndex = 0;
-  updateNavBar();
-  showQuestion(0);
-}
-
-// ─────────────────────────────────────────────
-// EXPORT / IMPORT PROGRESS
-// ─────────────────────────────────────────────
-document.getElementById('exportProgressBtn').addEventListener('click', () => {
-  const data = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    progress: storageGet('progress') || {},
-    userAnswers: storageGet('userAnswers') || {},
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `fw-interview-progress-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-});
-
-document.getElementById('importProgressBtn').addEventListener('click', () => {
-  document.getElementById('importFileInput').click();
-});
-
-document.getElementById('importFileInput').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (!data.progress) throw new Error('Invalid format');
-
-      const merge = confirm('Merge with existing progress? (Cancel = replace all)');
-      if (merge) {
-        const existing = getProgress();
-        const imported = data.progress;
-        // Merge viewed (keep latest timestamp)
-        const viewed = { ...(existing.viewed || {}), ...(imported.viewed || {}) };
-        // Merge confidence (keep highest)
-        const confidence = { ...(existing.confidence || {}) };
-        Object.entries(imported.confidence || {}).forEach(([k, v]) => {
-          confidence[k] = Math.max(confidence[k] || 0, v);
-        });
-        // Merge coding attempts (keep highest)
-        const coding = { ...(existing.coding || {}) };
-        Object.entries(imported.coding || {}).forEach(([k, v]) => {
-          coding[k] = Math.max(coding[k] || 0, v);
-        });
-        saveProgress({ viewed, confidence, coding });
-
-        // Merge answers (imported wins for conflicts)
-        const existingAnswers = storageGet('userAnswers') || {};
-        const importedAnswers = data.userAnswers || {};
-        storageSet('userAnswers', { ...existingAnswers, ...importedAnswers });
-      } else {
-        saveProgress(data.progress);
-        storageSet('userAnswers', data.userAnswers || {});
-      }
-
-      buildCategoryList();
-      updateStats();
-      showQuestion(currentIndex);
-      alert(`✅ Imported! ${Object.keys(data.progress.viewed || {}).length} reviewed, ${Object.keys(data.progress.confidence || {}).length} rated.`);
-    } catch (err) {
-      alert('❌ Invalid progress file: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = ''; // reset so same file can be re-imported
 });
 
 // ─────────────────────────────────────────────
