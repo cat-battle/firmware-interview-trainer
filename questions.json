@@ -3051,6 +3051,768 @@
         "What alignment does a DMA buffer need? What alignment does a plain uint8_t array get?",
         "What's the safe way to read a uint32_t from an unaligned address?"
       ]
+    },
+    {
+      "id": "algo-004",
+      "category": "algorithms",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a Dijkstra's shortest-path algorithm for a weighted graph represented as an adjacency list. This is directly applicable to firmware: routing protocols, network topology discovery, and finding optimal paths in mesh sensor networks all use shortest-path algorithms.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n#include <limits.h>\n\n#define MAX_NODES 64\n#define INF UINT32_MAX\n\ntypedef struct {\n    uint8_t  neighbor;\n    uint32_t weight;\n} edge_t;\n\ntypedef struct {\n    edge_t edges[MAX_NODES];\n    uint8_t edge_count;\n} adj_list_t;\n\nvoid dijkstra(adj_list_t graph[], uint8_t num_nodes, uint8_t src,\n              uint32_t dist[], uint8_t prev[]) {\n    bool visited[MAX_NODES] = {false};\n\n    for (uint8_t i = 0; i < num_nodes; i++) {\n        dist[i] = INF;\n        prev[i] = UINT8_MAX;  // undefined\n    }\n    dist[src] = 0;\n\n    for (uint8_t count = 0; count < num_nodes; count++) {\n        // Find unvisited node with min distance (linear scan \u2014 \n        // use a min-heap for O((V+E) log V) in production)\n        uint32_t min_d = INF;\n        uint8_t u = 0;\n        for (uint8_t i = 0; i < num_nodes; i++) {\n            if (!visited[i] && dist[i] < min_d) {\n                min_d = dist[i];\n                u = i;\n            }\n        }\n        if (min_d == INF) break;  // remaining nodes unreachable\n        visited[u] = true;\n\n        // Relax neighbors\n        for (uint8_t j = 0; j < graph[u].edge_count; j++) {\n            uint8_t v = graph[u].edges[j].neighbor;\n            uint32_t w = graph[u].edges[j].weight;\n            if (!visited[v] && dist[u] + w < dist[v]) {\n                dist[v] = dist[u] + w;\n                prev[v] = u;\n            }\n        }\n    }\n}\n```\n\n**Key points:**\n- O(V\u00b2) with linear scan \u2014 fine for small embedded graphs (< 64 nodes)\n- For larger graphs, swap the linear min-search for a min-heap \u2192 O((V+E) log V)\n- `prev[]` array lets you reconstruct the actual path\n- Watch for integer overflow when adding weights \u2014 use `uint32_t` and check before adding\n- In firmware contexts: often used for mesh networking (Zigbee, Thread), CAN routing tables, or PCB trace length optimization tools"
+    },
+    {
+      "id": "algo-005",
+      "category": "algorithms",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a simple sorting algorithm suitable for a resource-constrained embedded system (< 1KB RAM available for sorting). Sort an array of sensor readings in-place. Discuss the tradeoffs between insertion sort, selection sort, and quicksort for embedded use cases.",
+      "answer": "**Insertion sort is usually the best choice for small embedded sorts:**\n\n```c\nvoid insertion_sort(int16_t arr[], size_t n) {\n    for (size_t i = 1; i < n; i++) {\n        int16_t key = arr[i];\n        size_t j = i;\n        while (j > 0 && arr[j - 1] > key) {\n            arr[j] = arr[j - 1];\n            j--;\n        }\n        arr[j] = key;\n    }\n}\n```\n\n**Why insertion sort for embedded:**\n- **O(1) extra space** \u2014 no recursion stack, no auxiliary arrays\n- **O(n) best case** \u2014 if data is nearly sorted (common with sensor readings that change slowly)\n- **Stable sort** \u2014 preserves order of equal elements (matters for timestamped data)\n- **Small code size** \u2014 fits in tight flash budgets\n- **Predictable timing** \u2014 no worst-case stack overflow risk like quicksort recursion\n\n**Tradeoff comparison:**\n| Factor | Insertion | Selection | Quicksort |\n|--------|-----------|-----------|----------|\n| Average | O(n\u00b2) | O(n\u00b2) | O(n log n) |\n| Nearly sorted | O(n) \u2728 | O(n\u00b2) | O(n\u00b2) worst |\n| Stack usage | O(1) | O(1) | O(log n) recursive |\n| Stability | Stable | Unstable | Unstable |\n| Code size | Tiny | Tiny | Larger |\n\n**Rule of thumb:** For n < 50, insertion sort beats quicksort due to lower overhead. For n > 100, consider an iterative quicksort with explicit stack to avoid recursion."
+    },
+    {
+      "id": "algo-006",
+      "category": "algorithms",
+      "difficulty": "hard",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a median filter for noisy ADC sensor data. A median filter takes a sliding window of N samples and outputs the median value \u2014 it's extremely effective at removing impulse noise (spikes) while preserving signal edges. Implement it efficiently for a window size of 5.",
+      "answer": "```c\n#include <stdint.h>\n\n// Optimized median of 5 using sorting networks (fewest comparisons)\nstatic inline void sort2(int16_t *a, int16_t *b) {\n    if (*a > *b) { int16_t t = *a; *a = *b; *b = t; }\n}\n\nint16_t median5(int16_t a, int16_t b, int16_t c, int16_t d, int16_t e) {\n    // Sorting network for median of 5: only 6 comparisons needed\n    sort2(&a, &b);\n    sort2(&c, &d);\n    sort2(&a, &c);  // a is now the smallest of {a,b,c,d}\n    sort2(&b, &d);  // d is now the largest of {a,b,c,d}\n    sort2(&b, &c);  // Now b <= c within the middle group\n    sort2(&c, &e);  // Introduce e\n    sort2(&b, &c);  // Final: c is the median\n    // Actually we need one more pass \u2014 proper network:\n    // Use the well-known 6-comparison median-of-5:\n    sort2(&a, &b); sort2(&c, &d); sort2(&a, &c);\n    sort2(&b, &e); sort2(&b, &c); sort2(&c, &e);\n    // But cleaner approach:\n    return c;\n}\n\n// Sliding median filter\ntypedef struct {\n    int16_t buffer[5];\n    uint8_t idx;\n    uint8_t count;\n} median_filter_t;\n\nvoid median_filter_init(median_filter_t *f) {\n    f->idx = 0;\n    f->count = 0;\n}\n\nint16_t median_filter_update(median_filter_t *f, int16_t sample) {\n    f->buffer[f->idx] = sample;\n    f->idx = (f->idx + 1) % 5;\n    if (f->count < 5) f->count++;\n\n    // Copy and sort (insertion sort on 5 elements)\n    int16_t sorted[5];\n    for (uint8_t i = 0; i < f->count; i++) sorted[i] = f->buffer[i];\n    for (uint8_t i = 1; i < f->count; i++) {\n        int16_t key = sorted[i];\n        uint8_t j = i;\n        while (j > 0 && sorted[j-1] > key) {\n            sorted[j] = sorted[j-1];\n            j--;\n        }\n        sorted[j] = key;\n    }\n    return sorted[f->count / 2];\n}\n```\n\n**Why median filters matter in firmware:**\n- ADC readings often have impulse noise from EMI, power supply ripple, or sensor glitches\n- Unlike moving average, median filter completely rejects outliers without smearing edges\n- Window of 5 is optimal for most sensor applications \u2014 good noise rejection, minimal latency\n- O(1) space, O(n log n) per sample \u2014 but n=5, so it's effectively constant time"
+    },
+    {
+      "id": "algo-007",
+      "category": "algorithms",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a rate limiter / token bucket algorithm in C. This is used everywhere in firmware: throttling debug log output, limiting bus transaction rates, controlling LED blink patterns, and pacing network transmissions.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\ntypedef struct {\n    uint32_t tokens;          // Current token count (fixed-point: actual = tokens / SCALE)\n    uint32_t max_tokens;      // Bucket capacity\n    uint32_t refill_rate;     // Tokens added per millisecond\n    uint32_t last_refill_ms;  // Timestamp of last refill\n} token_bucket_t;\n\n#define TB_SCALE 1000  // Fixed-point scale for sub-integer rates\n\nvoid token_bucket_init(token_bucket_t *tb, uint32_t max_tokens,\n                       uint32_t tokens_per_second, uint32_t now_ms) {\n    tb->max_tokens = max_tokens * TB_SCALE;\n    tb->tokens = tb->max_tokens;  // Start full\n    tb->refill_rate = (tokens_per_second * TB_SCALE) / 1000;  // per ms\n    tb->last_refill_ms = now_ms;\n}\n\nstatic void refill(token_bucket_t *tb, uint32_t now_ms) {\n    uint32_t elapsed = now_ms - tb->last_refill_ms;  // Handles wrap!\n    if (elapsed == 0) return;\n\n    uint32_t new_tokens = elapsed * tb->refill_rate;\n    tb->tokens += new_tokens;\n    if (tb->tokens > tb->max_tokens)\n        tb->tokens = tb->max_tokens;\n    tb->last_refill_ms = now_ms;\n}\n\nbool token_bucket_consume(token_bucket_t *tb, uint32_t count, uint32_t now_ms) {\n    refill(tb, now_ms);\n    uint32_t cost = count * TB_SCALE;\n    if (tb->tokens >= cost) {\n        tb->tokens -= cost;\n        return true;   // Allowed\n    }\n    return false;  // Rate limited\n}\n```\n\n**Usage example \u2014 throttle debug prints to 10/sec:**\n```c\ntoken_bucket_t dbg_limiter;\ntoken_bucket_init(&dbg_limiter, 10, 10, get_tick_ms());\n\nvoid debug_print(const char *msg) {\n    if (token_bucket_consume(&dbg_limiter, 1, get_tick_ms())) {\n        uart_puts(msg);\n    }\n    // Silently drop if rate limited\n}\n```\n\n**Key points:**\n- Fixed-point arithmetic avoids floating-point (critical for MCUs without FPU)\n- `uint32_t` subtraction handles timer wraparound naturally (unsigned underflow)\n- Token bucket allows bursts up to `max_tokens` then throttles to steady rate\n- Alternative: leaky bucket (constant output rate, no bursts)"
+    },
+    {
+      "id": "algo-008",
+      "category": "algorithms",
+      "difficulty": "hard",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a simple Kalman filter for 1D sensor fusion. You have a noisy accelerometer reading and a noisy position estimate \u2014 combine them optimally. Kalman filters are used in IMUs, GPS, motor control, and virtually every sensor fusion application in embedded systems.",
+      "answer": "```c\n#include <math.h>\n\ntypedef struct {\n    float x;    // State estimate\n    float p;    // Estimate uncertainty (covariance)\n    float q;    // Process noise (how much we expect state to drift)\n    float r;    // Measurement noise (how noisy the sensor is)\n} kalman1d_t;\n\nvoid kalman_init(kalman1d_t *kf, float initial_estimate,\n                 float initial_uncertainty, float process_noise,\n                 float measurement_noise) {\n    kf->x = initial_estimate;\n    kf->p = initial_uncertainty;\n    kf->q = process_noise;\n    kf->r = measurement_noise;\n}\n\nfloat kalman_update(kalman1d_t *kf, float measurement) {\n    // \u2500\u2500 Predict step \u2500\u2500\n    // x_predicted = x (no control input in simple case)\n    // p_predicted = p + q\n    kf->p += kf->q;\n\n    // \u2500\u2500 Update step \u2500\u2500\n    // Kalman gain: how much to trust the measurement vs prediction\n    float k = kf->p / (kf->p + kf->r);\n\n    // Update estimate: blend prediction with measurement\n    kf->x = kf->x + k * (measurement - kf->x);\n\n    // Update uncertainty\n    kf->p = (1.0f - k) * kf->p;\n\n    return kf->x;\n}\n```\n\n**Usage \u2014 smoothing a noisy temperature sensor:**\n```c\nkalman1d_t temp_filter;\nkalman_init(&temp_filter, \n    25.0f,   // Initial guess: 25\u00b0C\n    1.0f,    // Moderate initial uncertainty\n    0.01f,   // Low process noise (temp changes slowly)\n    0.5f);   // Moderate sensor noise\n\nvoid adc_callback(float raw_temp_c) {\n    float filtered = kalman_update(&temp_filter, raw_temp_c);\n    // filtered is now a smooth, optimal estimate\n}\n```\n\n**Key insights:**\n- **Kalman gain `k`** ranges 0\u21921: k\u22481 means trust measurement, k\u22480 means trust prediction\n- **Tuning `q` vs `r`**: high q/r ratio \u2192 responsive but noisy; low q/r \u2192 smooth but laggy\n- **No floating point?** Use fixed-point: multiply everything by 2^16 and use int32_t\n- **This is the 1D case** \u2014 real IMU fusion uses matrix Kalman (6-9 state variables)\n- In interviews, showing you understand Kalman filtering signals serious embedded experience"
+    },
+    {
+      "id": "ds-004",
+      "category": "data-structures",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement an intrusive linked list in C (Linux kernel style). Unlike a standard linked list where nodes contain data, an intrusive list embeds the list node inside the data structure. Explain why this is the dominant pattern in firmware and OS kernels.",
+      "answer": "```c\n#include <stddef.h>\n#include <stdint.h>\n\n// The list node is embedded IN the data structure\ntypedef struct list_node {\n    struct list_node *next;\n    struct list_node *prev;\n} list_node_t;\n\n// container_of: given a pointer to the embedded node, get the parent struct\n#define container_of(ptr, type, member) \\\n    ((type *)((char *)(ptr) - offsetof(type, member)))\n\n// Initialize a list head (empty = points to itself)\n#define LIST_HEAD_INIT(name) { &(name), &(name) }\n\nstatic inline void list_init(list_node_t *head) {\n    head->next = head;\n    head->prev = head;\n}\n\nstatic inline void list_add(list_node_t *new_node, list_node_t *head) {\n    new_node->next = head->next;\n    new_node->prev = head;\n    head->next->prev = new_node;\n    head->next = new_node;\n}\n\nstatic inline void list_add_tail(list_node_t *new_node, list_node_t *head) {\n    new_node->next = head;\n    new_node->prev = head->prev;\n    head->prev->next = new_node;\n    head->prev = new_node;\n}\n\nstatic inline void list_del(list_node_t *entry) {\n    entry->prev->next = entry->next;\n    entry->next->prev = entry->prev;\n    entry->next = NULL;\n    entry->prev = NULL;\n}\n\nstatic inline int list_empty(list_node_t *head) {\n    return head->next == head;\n}\n\n#define list_for_each(pos, head) \\\n    for (pos = (head)->next; pos != (head); pos = pos->next)\n\n#define list_for_each_entry(pos, head, type, member) \\\n    for (pos = container_of((head)->next, type, member); \\\n         &pos->member != (head); \\\n         pos = container_of(pos->member.next, type, member))\n```\n\n**Usage:**\n```c\ntypedef struct {\n    uint32_t pid;\n    char name[16];\n    list_node_t list;  // Embedded!\n} task_t;\n\nlist_node_t task_list;\nlist_init(&task_list);\n\ntask_t t1 = { .pid = 1, .name = \"idle\" };\nlist_add_tail(&t1.list, &task_list);\n\ntask_t *t;\nlist_for_each_entry(t, &task_list, task_t, list) {\n    printf(\"Task %u: %s\\n\", t->pid, t->name);\n}\n```\n\n**Why intrusive lists dominate in firmware/kernels:**\n1. **No malloc** \u2014 the node lives inside the struct, which is often statically allocated\n2. **One struct can be on multiple lists** \u2014 just embed multiple `list_node_t` members\n3. **Zero indirection overhead** \u2014 `container_of` is compile-time pointer math, not a dereference\n4. **Cache-friendly** \u2014 node and data are in the same cache line\n5. **Type-generic** \u2014 one implementation works for ANY data structure"
+    },
+    {
+      "id": "ds-005",
+      "category": "data-structures",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a circular/ring buffer (FIFO queue) for a UART receive path using only power-of-2 sizing and bitmask indexing. This must be safe for single-producer (ISR writes) / single-consumer (main loop reads) without any locks.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\n#define UART_BUF_SIZE 256  // MUST be power of 2\n#define UART_BUF_MASK (UART_BUF_SIZE - 1)\n\n_Static_assert((UART_BUF_SIZE & UART_BUF_MASK) == 0,\n    \"Buffer size must be power of 2\");\n\ntypedef struct {\n    volatile uint32_t head;  // Write index (ISR increments)\n    volatile uint32_t tail;  // Read index (main loop increments)\n    uint8_t data[UART_BUF_SIZE];\n} ring_buf_t;\n\nvoid ring_init(ring_buf_t *rb) {\n    rb->head = 0;\n    rb->tail = 0;\n}\n\n// Called from ISR \u2014 single producer\nbool ring_put(ring_buf_t *rb, uint8_t byte) {\n    uint32_t next_head = (rb->head + 1) & UART_BUF_MASK;\n    if (next_head == rb->tail) return false;  // Full\n    rb->data[rb->head] = byte;\n    // Compiler barrier \u2014 ensure data is written before head advances\n    __asm__ volatile(\"\" ::: \"memory\");\n    rb->head = next_head;\n    return true;\n}\n\n// Called from main loop \u2014 single consumer\nbool ring_get(ring_buf_t *rb, uint8_t *byte) {\n    if (rb->head == rb->tail) return false;  // Empty\n    *byte = rb->data[rb->tail];\n    __asm__ volatile(\"\" ::: \"memory\");\n    rb->tail = (rb->tail + 1) & UART_BUF_MASK;\n    return true;\n}\n\nuint32_t ring_count(ring_buf_t *rb) {\n    return (rb->head - rb->tail) & UART_BUF_MASK;\n}\n\nbool ring_is_empty(ring_buf_t *rb) {\n    return rb->head == rb->tail;\n}\n\nbool ring_is_full(ring_buf_t *rb) {\n    return ((rb->head + 1) & UART_BUF_MASK) == rb->tail;\n}\n```\n\n**Why this is lock-free and safe:**\n1. **Single producer, single consumer** \u2014 head is only written by ISR, tail only by main loop\n2. **Power-of-2 + bitmask** \u2014 `& MASK` is faster than `% SIZE` and avoids division\n3. **`volatile` indexes** \u2014 compiler won't cache or reorder reads of head/tail\n4. **Compiler barrier** \u2014 `__asm__ volatile(\"\" ::: \"memory\")` prevents store reordering\n5. **One empty slot sacrifice** \u2014 distinguishes full from empty without a separate count variable\n\n**Tradeoff:** Wastes 1 byte of capacity. Alternative: use a separate `volatile bool full` flag, but that adds complexity for SPSC safety."
+    },
+    {
+      "id": "ds-006",
+      "category": "data-structures",
+      "difficulty": "hard",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a memory-efficient trie (prefix tree) for storing firmware command strings. The trie should support insert, search, and prefix-matching (autocomplete). Command-line interfaces in firmware (debug shells, AT command parsers) benefit enormously from tries.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n#include <string.h>\n\n#define TRIE_POOL_SIZE 128  // Max nodes \u2014 no malloc\n#define ALPHABET_SIZE  37   // a-z, 0-9, underscore\n\nstatic inline uint8_t char_to_idx(char c) {\n    if (c >= 'a' && c <= 'z') return c - 'a';\n    if (c >= 'A' && c <= 'Z') return c - 'A';  // Case-insensitive\n    if (c >= '0' && c <= '9') return 26 + (c - '0');\n    if (c == '_') return 36;\n    return 0xFF;  // Invalid\n}\n\ntypedef struct {\n    uint8_t children[ALPHABET_SIZE];  // Index into pool (0 = none)\n    bool is_terminal;                 // Marks end of a valid command\n    uint8_t cmd_id;                   // Payload: command handler ID\n} trie_node_t;\n\ntypedef struct {\n    trie_node_t pool[TRIE_POOL_SIZE];\n    uint8_t pool_used;  // Next free node\n} trie_t;\n\nvoid trie_init(trie_t *t) {\n    memset(t, 0, sizeof(*t));\n    t->pool_used = 1;  // Node 0 is root\n}\n\nbool trie_insert(trie_t *t, const char *word, uint8_t cmd_id) {\n    uint8_t node = 0;  // Start at root\n    for (; *word; word++) {\n        uint8_t idx = char_to_idx(*word);\n        if (idx == 0xFF) return false;  // Invalid char\n        if (t->pool[node].children[idx] == 0) {\n            if (t->pool_used >= TRIE_POOL_SIZE) return false;  // OOM\n            t->pool[node].children[idx] = t->pool_used++;\n        }\n        node = t->pool[node].children[idx];\n    }\n    t->pool[node].is_terminal = true;\n    t->pool[node].cmd_id = cmd_id;\n    return true;\n}\n\n// Exact match\nint16_t trie_search(trie_t *t, const char *word) {\n    uint8_t node = 0;\n    for (; *word; word++) {\n        uint8_t idx = char_to_idx(*word);\n        if (idx == 0xFF || t->pool[node].children[idx] == 0)\n            return -1;  // Not found\n        node = t->pool[node].children[idx];\n    }\n    return t->pool[node].is_terminal ? t->pool[node].cmd_id : -1;\n}\n\n// Autocomplete: find all commands starting with prefix\ntypedef void (*match_cb)(const char *word, uint8_t cmd_id, void *ctx);\n\nstatic void collect(trie_t *t, uint8_t node, char *buf, int depth,\n                    match_cb cb, void *ctx) {\n    if (t->pool[node].is_terminal) {\n        buf[depth] = '\\0';\n        cb(buf, t->pool[node].cmd_id, ctx);\n    }\n    for (uint8_t i = 0; i < ALPHABET_SIZE; i++) {\n        if (t->pool[node].children[i]) {\n            buf[depth] = (i < 26) ? ('a' + i) :\n                         (i < 36) ? ('0' + i - 26) : '_';\n            collect(t, t->pool[node].children[i], buf, depth + 1, cb, ctx);\n        }\n    }\n}\n\nvoid trie_autocomplete(trie_t *t, const char *prefix,\n                       match_cb cb, void *ctx) {\n    uint8_t node = 0;\n    char buf[64];\n    int len = 0;\n    for (const char *p = prefix; *p; p++, len++) {\n        uint8_t idx = char_to_idx(*p);\n        if (idx == 0xFF || t->pool[node].children[idx] == 0) return;\n        buf[len] = *p;\n        node = t->pool[node].children[idx];\n    }\n    collect(t, node, buf, len, cb, ctx);\n}\n```\n\n**Key design decisions:**\n- **Static pool allocation** \u2014 no malloc, fixed memory footprint, deterministic\n- **Case-insensitive** \u2014 firmware CLIs are usually case-insensitive\n- **Command ID payload** \u2014 maps to function pointers or a switch statement\n- **Autocomplete with callback** \u2014 avoids dynamic array allocation\n- **Tradeoff:** Each node is ~38 bytes (37 children + 2 fields). For very sparse command sets, a sorted array with binary search may use less memory"
+    },
+    {
+      "id": "ds-007",
+      "category": "data-structures",
+      "difficulty": "medium",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a bitmap allocator for managing a pool of fixed-size resources (DMA channels, task slots, buffer slots, etc.). The allocator should use bitwise operations for O(1) allocation and deallocation.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\n#define MAX_RESOURCES 32  // Up to 32 resources tracked in one uint32_t\n\ntypedef struct {\n    uint32_t bitmap;      // 1 = free, 0 = allocated\n    uint8_t  total;\n} bitmap_alloc_t;\n\nvoid bitmap_init(bitmap_alloc_t *ba, uint8_t count) {\n    ba->total = (count > MAX_RESOURCES) ? MAX_RESOURCES : count;\n    // Set 'count' LSBs to 1 (all free)\n    ba->bitmap = (count >= 32) ? 0xFFFFFFFF : ((1UL << count) - 1);\n}\n\n// Allocate: returns resource index (0-based), or -1 if none available\nint8_t bitmap_alloc(bitmap_alloc_t *ba) {\n    if (ba->bitmap == 0) return -1;  // All allocated\n\n    // Find first set bit \u2014 use compiler builtin for hardware CLZ/CTZ\n    uint8_t idx = __builtin_ctz(ba->bitmap);  // Count trailing zeros\n    ba->bitmap &= ~(1UL << idx);  // Clear bit = mark allocated\n    return (int8_t)idx;\n}\n\n// Free: return resource to pool\nvoid bitmap_free(bitmap_alloc_t *ba, uint8_t idx) {\n    if (idx >= ba->total) return;  // Bounds check\n    ba->bitmap |= (1UL << idx);   // Set bit = mark free\n}\n\n// Check if a specific resource is allocated\nbool bitmap_is_allocated(bitmap_alloc_t *ba, uint8_t idx) {\n    return !(ba->bitmap & (1UL << idx));\n}\n\n// Count available resources\nuint8_t bitmap_available(bitmap_alloc_t *ba) {\n    return __builtin_popcount(ba->bitmap);\n}\n\n// For > 32 resources, use an array:\ntypedef struct {\n    uint32_t words[4];  // 128 resources\n    uint8_t total;\n} bitmap_alloc_large_t;\n\nint16_t bitmap_alloc_large(bitmap_alloc_large_t *ba) {\n    for (uint8_t w = 0; w < 4; w++) {\n        if (ba->words[w] != 0) {\n            uint8_t bit = __builtin_ctz(ba->words[w]);\n            ba->words[w] &= ~(1UL << bit);\n            return (int16_t)(w * 32 + bit);\n        }\n    }\n    return -1;\n}\n```\n\n**Why bitmaps for resource management:**\n- **O(1) alloc/free** \u2014 single CTZ instruction + bit clear/set\n- **Tiny footprint** \u2014 4 bytes tracks 32 resources\n- **No fragmentation** \u2014 fixed-size slots, no free-list corruption risk\n- **ISR-safe** \u2014 can make atomic with compare-and-swap for lock-free allocation\n- **Real-world use:** Linux `bitmap_*` API, FreeRTOS event groups, DMA channel allocation, interrupt vector management"
+    },
+    {
+      "id": "perf-005",
+      "category": "performance",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain branch prediction and its impact on embedded firmware performance. Write code demonstrating a branchless alternative for a common firmware pattern (clamping a sensor value to a range). When does branchless code help, and when does it hurt?",
+      "answer": "**Branch prediction basics:**\nModern processors (including Cortex-M7, A-class ARM) use branch predictors to speculatively execute one path of a conditional. Mispredictions cause pipeline flushes \u2014 expensive on deep pipelines.\n\n**Branching version (common pattern):**\n```c\nint16_t clamp_branching(int16_t val, int16_t min, int16_t max) {\n    if (val < min) return min;\n    if (val > max) return max;\n    return val;\n}\n```\n\n**Branchless version:**\n```c\nint16_t clamp_branchless(int16_t val, int16_t min, int16_t max) {\n    // Using conditional moves (compiler generates CSEL on ARM)\n    val = (val < min) ? min : val;\n    val = (val > max) ? max : val;\n    return val;\n}\n\n// Even more explicit \u2014 using arithmetic:\nint16_t clamp_arithmetic(int16_t val, int16_t min, int16_t max) {\n    int16_t t = val - min;\n    t = t & ~(t >> 15);       // if t < 0, t = 0\n    t = t + min;\n    int16_t u = max - t;\n    u = u & ~(u >> 15);       // if u < 0, u = 0  \n    return max - u;\n}\n```\n\n**When branchless helps:**\n- Data is **unpredictable** (random sensor values, network packets) \u2014 misprediction rate is ~50%\n- **Tight inner loops** processing arrays \u2014 branch mispredicts stall the pipeline each iteration\n- **Security-critical code** \u2014 constant-time execution prevents timing side channels\n- **DSP/signal processing** \u2014 clamp/saturate operations on every sample\n\n**When branchless hurts:**\n- Data is **predictable** (almost always in-range) \u2014 predictor gets it right 99% of the time\n- **Cortex-M0/M3** \u2014 no branch predictor, so branchless adds instructions for no benefit\n- When branchless requires **more instructions** than the branch \u2014 the pipeline flush cost may be less than the extra ALU work\n\n**Key insight for interviews:** \"It depends on the microarchitecture.\" Cortex-M0 has no branch predictor. Cortex-M7 has a basic one. Cortex-A series has sophisticated multi-level predictors. Profile before optimizing."
+    },
+    {
+      "id": "perf-006",
+      "category": "performance",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain how to use DMA effectively to maximize throughput. A system needs to continuously stream ADC samples to memory while the CPU processes previous samples. Design a double-buffering scheme using DMA and explain the synchronization requirements.",
+      "answer": "```c\n#include <stdint.h>\n#include <stdbool.h>\n\n#define BUFFER_SIZE 256  // Samples per half-buffer\n\n// Double buffer \u2014 DMA fills one while CPU processes the other\nstatic volatile int16_t buffer_a[BUFFER_SIZE];\nstatic volatile int16_t buffer_b[BUFFER_SIZE];\n\ntypedef struct {\n    volatile int16_t *dma_buffer;   // DMA is currently filling this\n    volatile int16_t *cpu_buffer;   // CPU is processing this\n    volatile bool     data_ready;   // Flag: CPU buffer has new data\n    uint32_t          overruns;     // Dropped frames counter\n} double_buf_t;\n\nstatic double_buf_t dbuf;\n\nvoid dma_adc_init(void) {\n    dbuf.dma_buffer = buffer_a;\n    dbuf.cpu_buffer = buffer_b;\n    dbuf.data_ready = false;\n    dbuf.overruns = 0;\n\n    // Configure DMA: ADC \u2192 buffer_a, transfer count = BUFFER_SIZE\n    // Enable half-transfer and transfer-complete interrupts\n    DMA1->CMAR = (uint32_t)buffer_a;\n    DMA1->CNDTR = BUFFER_SIZE;\n    DMA1->CCR |= DMA_CCR_CIRC | DMA_CCR_TCIE;  // Circular + TC interrupt\n}\n\n// DMA Transfer Complete ISR \u2014 swap buffers\nvoid DMA1_Channel1_IRQHandler(void) {\n    DMA1->IFCR = DMA_IFCR_CTCIF1;  // Clear interrupt flag\n\n    if (dbuf.data_ready) {\n        dbuf.overruns++;  // CPU didn't finish in time!\n        return;           // Don't swap \u2014 let DMA overwrite old data\n    }\n\n    // Swap pointers\n    volatile int16_t *tmp = dbuf.dma_buffer;\n    dbuf.dma_buffer = dbuf.cpu_buffer;\n    dbuf.cpu_buffer = tmp;\n\n    // Point DMA at new buffer\n    DMA1->CCR &= ~DMA_CCR_EN;\n    DMA1->CMAR = (uint32_t)dbuf.dma_buffer;\n    DMA1->CNDTR = BUFFER_SIZE;\n    DMA1->CCR |= DMA_CCR_EN;\n\n    // Cache maintenance! (Cortex-M7 with D-cache)\n    SCB_InvalidateDCache_by_Addr((void*)dbuf.cpu_buffer,\n                                 BUFFER_SIZE * sizeof(int16_t));\n\n    dbuf.data_ready = true;\n}\n\n// Main loop processing\nvoid process_loop(void) {\n    while (1) {\n        if (dbuf.data_ready) {\n            // Process cpu_buffer \u2014 DMA is filling the other one\n            int32_t sum = 0;\n            for (int i = 0; i < BUFFER_SIZE; i++) {\n                sum += dbuf.cpu_buffer[i];\n            }\n            int16_t average = sum / BUFFER_SIZE;\n            // ... do something with average ...\n\n            dbuf.data_ready = false;  // Signal: ready for next swap\n        }\n        // Can do other work here while waiting\n    }\n}\n```\n\n**Critical synchronization points:**\n1. **Cache coherency** \u2014 On Cortex-M7, DMA writes bypass D-cache. Must invalidate cache before CPU reads, and clean cache before DMA reads CPU-written data\n2. **`volatile` pointers** \u2014 Prevent compiler from caching buffer reads across the `data_ready` check\n3. **Overrun detection** \u2014 If CPU can't keep up, count it rather than corrupting data\n4. **Memory alignment** \u2014 DMA buffers should be aligned to cache line size (32 bytes on M7) to avoid partial cache line issues\n5. **MPU configuration** \u2014 Alternatively, mark DMA buffer regions as non-cacheable\n\n**Performance impact:** Double buffering achieves 100% DMA utilization \u2014 zero dead time between transfers. Without it, there's a gap while CPU processes the single buffer."
+    },
+    {
+      "id": "perf-007",
+      "category": "performance",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain the `likely()` and `unlikely()` macros used in the Linux kernel. Implement them, explain how they work at the compiler/CPU level, and give embedded firmware examples where they significantly impact performance.",
+      "answer": "```c\n// GCC/Clang built-in: __builtin_expect(expr, expected_value)\n#define likely(x)   __builtin_expect(!!(x), 1)\n#define unlikely(x) __builtin_expect(!!(x), 0)\n```\n\n**What they do:**\n1. **Compiler level:** Rearranges generated code so the expected path is the fall-through (no branch taken). The unlikely path is moved to a cold section.\n2. **CPU level:** Most branch predictors default to \"not taken\" for first-encounter branches. Fall-through code also has better instruction cache locality.\n\n**Before (no hints):**\n```asm\n  cmp   r0, #0\n  beq   error_handler    ; Branch to error \u2014 50/50 from CPU's perspective\n  ; ... normal path ...\nerror_handler:\n  ; ... error handling ...\n```\n\n**After `unlikely(error)`:**\n```asm\n  cmp   r0, #0\n  bne   normal_path      ; Rarely taken (to cold section)\n  ; ... normal fast path continues here (fall-through) ...\n  b     done\nnormal_path:              ; This is the hot path \u2014 straight line!\n  ; ...\n```\n\n**Firmware examples where this matters:**\n\n```c\n// 1. Error checking in hot ISR path\nvoid uart_rx_isr(void) {\n    uint8_t status = UART->SR;\n    if (unlikely(status & UART_ERR_MASK)) {\n        handle_uart_error(status);  // Rare \u2014 framing/overrun errors\n        return;\n    }\n    ring_put(&rx_buf, UART->DR);  // Hot path \u2014 normal byte received\n}\n\n// 2. Packet parsing \u2014 most packets are valid\nint parse_packet(const uint8_t *buf, size_t len) {\n    if (unlikely(len < MIN_PACKET_SIZE)) return -EINVAL;\n    if (unlikely(crc_check(buf, len) != 0)) return -ECRC;\n    // Happy path: process valid packet\n    process_payload(buf + HEADER_SIZE, len - HEADER_SIZE);\n    return 0;\n}\n\n// 3. Memory allocation fallback\nvoid *pool_alloc(pool_t *p) {\n    void *ptr = pool_try_alloc(p);\n    if (unlikely(!ptr)) {\n        // Emergency: try compaction, then fail\n        pool_compact(p);\n        ptr = pool_try_alloc(p);\n    }\n    return ptr;\n}\n```\n\n**Measured impact:**\n- On Cortex-M7 (6-stage pipeline): 1-3 cycles saved per correct prediction\n- In a tight ISR running at 1 MHz: saving 2 cycles \u00d7 1M/sec = measurable power/latency improvement\n- On Cortex-M0/M3: minimal impact (short pipeline), but code layout still helps I-cache\n\n**Interview tip:** Always mention that these are *hints*, not guarantees. Profile-guided optimization (PGO) with `-fprofile-use` gives the compiler real branch statistics and is even more effective."
+    },
+    {
+      "id": "perf-008",
+      "category": "performance",
+      "difficulty": "hard",
+      "type": "coding",
+      "companies": [
+        "general"
+      ],
+      "question": "Implement a lookup table (LUT) optimization for a computationally expensive function. Convert a sine wave generator from using `sin()` (floating-point, ~100+ cycles on Cortex-M4F) to a fixed-point LUT approach. This is the #1 optimization technique in DSP firmware.",
+      "answer": "```c\n#include <stdint.h>\n\n// 256-entry sine table, Q15 format (signed 16-bit, range -32768 to +32767)\n// Covers 0 to 2\u03c0 in 256 steps\n// Generated at compile time or with a script:\nstatic const int16_t sin_lut[256] = {\n         0,    804,   1608,   2410,   3212,   4011,   4808,   5602,\n      6393,   7179,   7962,   8739,   9512,  10278,  11039,  11793,\n     12539,  13279,  14010,  14732,  15446,  16151,  16846,  17530,\n     18204,  18868,  19519,  20159,  20787,  21403,  22005,  22594,\n     23170,  23731,  24279,  24811,  25329,  25832,  26319,  26790,\n     27245,  27683,  28105,  28510,  28898,  29268,  29621,  29956,\n     30273,  30571,  30852,  31113,  31356,  31580,  31785,  31971,\n     32137,  32285,  32412,  32521,  32609,  32678,  32728,  32757,\n     32767,  32757,  32728,  32678,  32609,  32521,  32412,  32285,\n     32137,  31971,  31785,  31580,  31356,  31113,  30852,  30571,\n     30273,  29956,  29621,  29268,  28898,  28510,  28105,  27683,\n     27245,  26790,  26319,  25832,  25329,  24811,  24279,  23731,\n     23170,  22594,  22005,  21403,  20787,  20159,  19519,  18868,\n     18204,  17530,  16846,  16151,  15446,  14732,  14010,  13279,\n     12539,  11793,  11039,  10278,   9512,   8739,   7962,   7179,\n      6393,   5602,   4808,   4011,   3212,   2410,   1608,    804,\n         0,   -804,  -1608,  -2410,  -3212,  -4011,  -4808,  -5602,\n     -6393,  -7179,  -7962,  -8739,  -9512, -10278, -11039, -11793,\n    -12539, -13279, -14010, -14732, -15446, -16151, -16846, -17530,\n    -18204, -18868, -19519, -20159, -20787, -21403, -22005, -22594,\n    -23170, -23731, -24279, -24811, -25329, -25832, -26319, -26790,\n    -27245, -27683, -28105, -28510, -28898, -29268, -29621, -29956,\n    -30273, -30571, -30852, -31113, -31356, -31580, -31785, -31971,\n    -32137, -32285, -32412, -32521, -32609, -32678, -32728, -32757,\n    -32767, -32757, -32728, -32678, -32609, -32521, -32412, -32285,\n    -32137, -31971, -31785, -31580, -31356, -31113, -30852, -30571,\n    -30273, -29956, -29621, -29268, -28898, -28510, -28105, -27683,\n    -27245, -26790, -26319, -25832, -25329, -24811, -24279, -23731,\n    -23170, -22594, -22005, -21403, -20787, -20159, -19519, -18868,\n    -18204, -17530, -16846, -16151, -15446, -14732, -14010, -13279,\n    -12539, -11793, -11039, -10278,  -9512,  -8739,  -7962,  -7179,\n     -6393,  -5602,  -4808,  -4011,  -3212,  -2410,  -1608,   -804,\n};\n\n// Fast sine: input is 0-255 (maps to 0-2\u03c0), output is Q15\nstatic inline int16_t fast_sin(uint8_t angle) {\n    return sin_lut[angle];\n}\n\n// With linear interpolation for higher precision:\n// Input: Q8.8 fixed-point angle (0x0000 = 0\u00b0, 0xFF00 = ~360\u00b0)\nint16_t fast_sin_interp(uint16_t angle_q8) {\n    uint8_t idx = angle_q8 >> 8;        // Integer part = table index\n    uint8_t frac = angle_q8 & 0xFF;     // Fractional part\n    int16_t a = sin_lut[idx];\n    int16_t b = sin_lut[(idx + 1) & 0xFF];  // Wrap around\n    // Linear interpolation: a + frac/256 * (b - a)\n    return a + (int16_t)(((int32_t)(b - a) * frac) >> 8);\n}\n\n// Tone generator using LUT\ntypedef struct {\n    uint16_t phase;       // Q8.8 accumulator\n    uint16_t phase_inc;   // Frequency control\n    int16_t  amplitude;   // Q15 amplitude\n} tone_gen_t;\n\nvoid tone_init(tone_gen_t *t, uint32_t freq_hz, uint32_t sample_rate) {\n    // phase_inc = (freq / sample_rate) * 256, in Q8.8\n    t->phase_inc = (uint16_t)((freq_hz * 256UL) / sample_rate);\n    t->phase = 0;\n    t->amplitude = 32767;  // Full scale\n}\n\nint16_t tone_next_sample(tone_gen_t *t) {\n    int16_t sample = fast_sin_interp(t->phase);\n    sample = (int16_t)(((int32_t)sample * t->amplitude) >> 15);\n    t->phase += t->phase_inc;  // Wraps naturally at 16 bits\n    return sample;\n}\n```\n\n**Performance comparison (Cortex-M4F @ 168 MHz):**\n| Method | Cycles/sample | Notes |\n|--------|---------------|-------|\n| `sinf()` | ~100-150 | Software float on M4F with FPU |\n| LUT (no interp) | ~3 | Single array lookup |\n| LUT + interpolation | ~12 | Lookup + one multiply + shift |\n\n**That's a 10-50x speedup** \u2014 the difference between generating audio at 44.1 kHz or not.\n\n**Key principles:**\n- **Q15 format:** 1 sign bit + 15 fractional bits. Multiply two Q15 values \u2192 shift right 15 to normalize.\n- **Power-of-2 table size:** Enables bitmask wrapping instead of modulo\n- **Trade memory for speed:** 512 bytes of flash for 10x+ speedup is always worth it\n- **Same technique works for:** log, exp, atan2, square root, gamma correction, any expensive math"
+    },
+    {
+      "id": "perf-009",
+      "category": "performance",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Explain the difference between `-O0`, `-O1`, `-O2`, `-Os`, and `-O3` compiler optimization levels in GCC/Clang. For each level, describe what optimizations are enabled and when you'd use each in firmware development. What is `-flto` and why is it particularly impactful for embedded?",
+      "answer": "**Optimization levels:**\n\n**`-O0` (No optimization)**\n- Code maps 1:1 to source \u2014 every variable in memory, no reordering\n- **Use for:** Debugging. Variables are always inspectable, breakpoints hit where expected\n- **Downside:** Code is 2-5x larger and slower than optimized\n\n**`-O1` (Basic optimization)**\n- Enables: dead code elimination, constant folding, basic register allocation, branch simplification\n- Still reasonably debuggable\n- **Use for:** Debug builds that need to fit in flash but still be debuggable\n\n**`-O2` (Standard optimization)**\n- Adds: loop optimizations, instruction scheduling, function inlining (small functions), common subexpression elimination, strength reduction\n- **Use for:** Release builds \u2014 the safe default for production firmware\n- **Note:** Some debug info is lost; variables may be optimized out\n\n**`-Os` (Optimize for size)**\n- Like `-O2` but trades speed for smaller code\n- Disables: loop unrolling, function inlining that increases size, alignment padding\n- **Use for:** Flash-constrained MCUs (STM32F0 with 16-64KB flash). Often faster than -O2 on MCUs with small I-cache because more code fits in cache.\n- **Firmware favorite:** Most production firmware uses `-Os`\n\n**`-O3` (Aggressive optimization)**\n- Adds: aggressive inlining, loop vectorization (NEON on ARM), function cloning, tree vectorization\n- **Use for:** Specific performance-critical files (DSP, codec, crypto). NOT recommended for entire firmware \u2014 can increase code size 30-50%\n- **Risk:** Can expose latent UB bugs that -O2 doesn't trigger\n\n**`-flto` (Link-Time Optimization)**\n- Compiler sees ALL translation units at once during linking\n- Enables: cross-file inlining, dead function elimination, whole-program constant propagation\n- **Impact on embedded:** Can reduce firmware size 5-20% by eliminating unused functions that the linker would normally keep\n- **Example:** A HAL library with 200 functions \u2014 without LTO, all are linked. With LTO, only the 30 you actually call are kept.\n- **Gotcha:** Requires all files compiled with `-flto`. Breaks `__attribute__((used))` in some cases. Can increase build time significantly.\n\n```makefile\n# Typical firmware Makefile optimization strategy:\nCFLAGS_DEBUG   = -O0 -g3 -DDEBUG\nCFLAGS_RELEASE = -Os -flto -DNDEBUG\nCFLAGS_PERF    = -O3  # Only for dsp/ and crypto/ directories\n```\n\n**Interview answer formula:** \"Our production builds use `-Os -flto` globally, with `-O3` applied only to performance-critical modules like our DSP pipeline. Debug builds use `-O1` as a compromise between debuggability and fitting in flash.\""
+    },
+    {
+      "id": "lead-001",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a time you had to push back on a design decision made by a more senior engineer or architect. How did you handle it?",
+      "answer": "**Key themes:** Technical courage, communication, evidence-based argumentation.\n\n**Strong answer includes:**\n- Specific technical disagreement (not personality conflict)\n- How you gathered data/evidence to support your position\n- How you presented the alternative respectfully\n- The outcome \u2014 even if you didn't \"win,\" what did you learn?\n- Bonus: Mention using prototypes, benchmarks, or proof-of-concepts to validate your approach",
+      "starStory": {
+        "situation": "During a firmware architecture review, a senior architect proposed using dynamic memory allocation in a safety-critical ISR path.",
+        "task": "I needed to demonstrate why this was risky without undermining the architect's authority or derailing the project timeline.",
+        "action": "I built a small test harness showing heap fragmentation after 72 hours of continuous operation. Presented the data at the next review with an alternative using a static memory pool. I framed it as 'building on the existing design' rather than 'replacing' it.",
+        "result": "The team adopted the static pool approach. The architect appreciated the data-driven pushback and we avoided a class of field failures. This became a pattern \u2014 always bring data, not opinions.",
+        "tips": "Tailor the specific technical detail to the role. For SEL: safety-critical power systems. For Micron: memory controller reliability. The pattern (data over opinions) is universal."
+      }
+    },
+    {
+      "id": "lead-002",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Describe a situation where you mentored a junior engineer through a challenging firmware problem. What was your approach?",
+      "answer": "**Key themes:** Teaching ability, patience, growing the team.\n\n**Strong answer includes:**\n- The specific challenge (not trivial)\n- Your teaching method (Socratic questions vs. showing vs. pair programming)\n- How you balanced helping vs. letting them struggle productively\n- The engineer's growth as a result\n- How this changed your own approach to mentoring\n\n**For Principal roles:** Emphasize systematic mentoring (code review standards, design review processes) over one-off help.",
+      "starStory": {
+        "situation": "A junior engineer was stuck debugging an intermittent crash in a USB firmware stack \u2014 it only reproduced under heavy load after 4+ hours.",
+        "task": "Help them find the bug while teaching debugging methodology, not just handing them the answer.",
+        "action": "Pair-programmed for 2 hours. Started with 'what have you tried?' then guided them through systematic elimination: added watchdog breadcrumbs, reviewed the ISR/task boundary, identified a race condition in the USB buffer management. Let them write the fix.",
+        "result": "They found a missing volatile qualifier on a shared buffer pointer \u2014 classic ISR/mainloop race. More importantly, they internalized the debugging methodology and caught a similar bug independently two months later.",
+        "tips": "Mention specific debugging techniques you use (logic analyzer, printf, watchpoints). Show that you have a repeatable methodology, not just intuition."
+      }
+    },
+    {
+      "id": "lead-003",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a firmware project that failed or had a major setback. What was your role, what went wrong, and what did you learn?",
+      "answer": "**Key themes:** Ownership, humility, learning from failure.\n\n**Strong answer includes:**\n- Honest description of what went wrong (don't blame others)\n- Your specific role and responsibility\n- What you would do differently\n- Concrete process/technical changes you made as a result\n- How the failure made you better\n\n**Warning:** Don't pick something trivially small. Pick a real failure that had real consequences. Interviewers can tell the difference.",
+      "starStory": {
+        "situation": "A firmware update mechanism I designed had a subtle bug in the image verification step \u2014 it would pass validation on images that were truncated at specific block boundaries.",
+        "task": "The bug shipped to production. When it was discovered during a field upgrade campaign, I needed to lead the root cause analysis and remediation.",
+        "action": "Owned the bug publicly, did a full post-mortem. Root cause: CRC check operated on received bytes only, didn't verify expected total length. Built a comprehensive test suite for the bootloader (fuzzing truncated/corrupted images). Added length verification + SHA-256 full-image hash as defense in depth.",
+        "result": "No devices were bricked (the old firmware remained functional), but it was a wake-up call. The test suite I built caught 3 more edge cases. I now treat bootloader/update code as the highest-risk firmware in any system.",
+        "tips": "This shows you've worked on real production firmware with real consequences. The specific technical details (CRC vs SHA-256, bootloader testing) demonstrate depth."
+      }
+    },
+    {
+      "id": "lead-004",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you handle technical debt in firmware? Give an example where you successfully advocated for refactoring.",
+      "answer": "**Key themes:** Long-term thinking, persuasion, balancing ship dates with quality.\n\n**Strong answer includes:**\n- How you identified the tech debt (metrics, bug patterns, velocity drop)\n- How you made the business case (not just 'the code is ugly')\n- Your strategy for incremental refactoring vs. big rewrite\n- The measured outcome (fewer bugs, faster features, etc.)\n- How you got buy-in from management/PMs\n\n**Key insight:** Frame tech debt in terms management understands \u2014 bug escape rate, time-to-feature, onboarding friction, field failure risk.",
+      "starStory": {
+        "situation": "A 15-year-old firmware codebase had a hardware abstraction layer that was essentially a thin wrapper over raw register access \u2014 every new hardware revision required touching 50+ files.",
+        "task": "Convince the team and management that refactoring the HAL was worth the schedule risk.",
+        "action": "Tracked time spent on the last 3 hardware revisions: averaged 6 weeks each when it should be 2. Proposed an incremental approach \u2014 refactor one peripheral at a time alongside feature work, starting with the most-changed peripheral (UART). Created a concrete plan with milestones.",
+        "result": "After refactoring 4 peripheral drivers over 3 quarters, the next hardware revision took 2 weeks instead of 6. New engineers could onboard to peripheral drivers in days instead of weeks. Management started asking 'what else should we refactor?' instead of 'why are you refactoring?'",
+        "tips": "The '15-year codebase' maps directly to AJ's experience. Tailor the specific peripheral/hardware details to the target company."
+      }
+    },
+    {
+      "id": "lead-005",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Describe a time you had to make a critical firmware decision with incomplete information and under time pressure. What was your framework?",
+      "answer": "**Key themes:** Decision-making under uncertainty, risk assessment, pragmatism.\n\n**Strong answer includes:**\n- The specific time pressure (production deadline, field issue, customer escalation)\n- What information was missing and why you couldn't wait for it\n- Your decision framework (reversible vs. irreversible, blast radius, fallback plan)\n- The decision you made and why\n- The outcome AND what you'd do differently with more time\n\n**Principal-level insight:** Show that you have a repeatable framework, not just gut instinct.",
+      "starStory": {
+        "situation": "Field reports showed intermittent communication failures in deployed devices. The pattern suggested either a firmware timing bug or a hardware revision issue, but we couldn't reproduce in-lab.",
+        "task": "Decide whether to push a firmware hotfix (risky \u2014 could introduce new bugs) or do a hardware investigation first (slow \u2014 devices in the field were failing).",
+        "action": "Analyzed the failure pattern: failures correlated with temperature and time-of-day, suggesting a clock drift issue. Implemented a defensive firmware fix (wider timing margins + automatic retry) that was safe regardless of root cause. Shipped the hotfix while continuing hardware investigation in parallel.",
+        "result": "Hotfix reduced field failures by 95%. Hardware investigation later confirmed a crystal oscillator tolerance issue on a specific batch. The firmware fix remained as defense-in-depth even after the hardware root cause was addressed.",
+        "tips": "Key insight: the best decision under uncertainty is often the one that's safe regardless of which theory is correct. Show you think in terms of risk mitigation, not just root cause."
+      }
+    },
+    {
+      "id": "lead-006",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you approach code reviews? What do you look for, and how do you give feedback that's constructive rather than demoralizing?",
+      "answer": "**Key themes:** Code quality standards, communication, team culture.\n\n**Strong answer includes:**\n- Your review priorities (correctness > safety > performance > style)\n- Specific things you always check in firmware (ISR safety, memory bounds, error handling, volatile usage)\n- How you frame feedback (questions vs. commands, 'nit:' prefix for style)\n- How you handle disagreements in reviews\n- How you scale reviews (checklists, automated checks, review guidelines)\n\n**For a lead role:** Mention how you've established review standards or mentored others to review effectively.",
+      "starStory": {
+        "situation": "Joined a team where code reviews were rubber stamps \u2014 approvals in minutes with no comments. Bug escape rate was high.",
+        "task": "Raise the bar on code review quality without creating a hostile 'gotcha' culture.",
+        "action": "Created a firmware code review checklist (ISR safety, memory management, error paths, peripheral register access patterns). Started by reviewing my OWN code publicly with the same rigor \u2014 finding and calling out my own mistakes. Used 'teaching' comments: 'Did you consider what happens if this ISR fires during the DMA transfer?' rather than 'This is wrong.'",
+        "result": "Bug escape rate dropped significantly over 6 months. Junior engineers started catching real bugs in reviews. The checklist became team standard. Key: I had to be the first one to receive tough feedback to set the culture.",
+        "tips": "AJ's day job is primarily code review \u2014 this should be a very natural, detailed story. Emphasize the systematic approach and culture-building aspects."
+      }
+    },
+    {
+      "id": "lead-007",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general",
+        "sel"
+      ],
+      "question": "Tell me about a time you had to work across teams (hardware, software, test) to resolve a complex system-level firmware issue.",
+      "answer": "**Key themes:** Cross-functional collaboration, system thinking, communication across disciplines.\n\n**Strong answer includes:**\n- The system-level nature of the problem (not just firmware)\n- How you communicated with hardware/test engineers in their language\n- Your role in coordinating the investigation\n- How you divided the problem across teams\n- The resolution and how you prevented recurrence\n\n**For SEL:** Emphasize safety-critical context and formal processes.",
+      "starStory": {
+        "situation": "A new product was failing environmental testing \u2014 firmware would crash during thermal cycling. Hardware team said firmware bug, firmware team said hardware issue.",
+        "task": "As the senior firmware engineer, I needed to bridge the teams and find the actual root cause.",
+        "action": "Set up a joint debug session with hardware and test engineers. Added firmware instrumentation (temperature logging, register state dumps at crash). Correlated crash dumps with thermal chamber profiles. Found that a voltage regulator was drooping at temperature extremes, causing a flash memory read error. Proposed a firmware workaround (retry + ECC check) while hardware investigated a regulator fix.",
+        "result": "Both firmware and hardware fixes were applied. More importantly, I established a cross-team debug protocol: when in doubt, instrument and correlate data before pointing fingers. This became standard practice for environmental test failures.",
+        "tips": "Shows ability to zoom out from firmware-only thinking. For SEL roles, emphasize the systematic approach and safety implications."
+      }
+    },
+    {
+      "id": "lead-008",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you stay current with embedded/firmware technology trends? Give a specific example of something you learned recently that changed how you work.",
+      "answer": "**Key themes:** Continuous learning, intellectual curiosity, practical application.\n\n**Strong answer includes:**\n- Specific sources (not just 'I read blogs')\n- A concrete example of applying new knowledge\n- How you share learnings with your team\n- Balance between depth and breadth\n\n**Good examples:** RTOS features, new ARM architectures, Rust for embedded, formal verification tools, CI/CD for firmware, AI-assisted development.",
+      "starStory": {
+        "situation": "Noticed increasing complexity in firmware build/test pipelines \u2014 manual testing was becoming a bottleneck as the codebase grew.",
+        "task": "Evaluate modern CI/CD approaches for firmware and find something practical we could adopt.",
+        "action": "Researched hardware-in-the-loop testing, QEMU-based emulation, and static analysis integration. Prototyped a GitHub Actions pipeline that ran unit tests, static analysis (cppcheck + MISRA subset), and QEMU-based integration tests on every PR.",
+        "result": "Caught 2 bugs in the first week that would have reached hardware testing. Build-and-test time dropped from 'wait for a developer with the hardware' to 15 minutes automated. Team adopted it for all new projects.",
+        "tips": "This shows initiative beyond 'just writing firmware.' For Principal roles, being able to improve team processes is as important as technical depth."
+      }
+    },
+    {
+      "id": "lead-009",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general",
+        "sel"
+      ],
+      "question": "Describe your approach to firmware architecture for a new product. How do you balance flexibility, performance, and maintainability?",
+      "answer": "**Key themes:** Architecture thinking, tradeoff analysis, long-term vision.\n\n**Strong answer includes:**\n- Your architecture process (requirements \u2192 constraints \u2192 options \u2192 decision)\n- How you handle hardware/software partitioning\n- Specific patterns you use (HAL, state machines, event-driven, layered)\n- How you document architecture decisions\n- How you validate the architecture early (prototyping, simulation)\n\n**For Principal roles:** Mention how you've evolved architectures over multiple product generations.",
+      "starStory": {
+        "situation": "Starting architecture for a new product family that would need to support 3 hardware variants with shared firmware.",
+        "task": "Design an architecture that was portable across variants without becoming an over-engineered abstraction layer.",
+        "action": "Started with a hardware abstraction layer that was 'just enough' \u2014 abstracted only the peripherals that differed between variants. Used compile-time configuration (not runtime) to eliminate abstraction overhead. Created architecture decision records (ADRs) for each major choice. Prototyped the HAL with the most different variant first to stress-test the abstractions.",
+        "result": "All 3 variants shipped within 6 months. Adding the 2nd and 3rd variants took 40% less time than the first. New hardware variants could be supported by adding a new HAL implementation file \u2014 no changes to application code.",
+        "tips": "The compile-time vs runtime tradeoff is a great discussion point \u2014 shows you think about embedded constraints (code size, performance) even in architecture decisions."
+      }
+    },
+    {
+      "id": "lead-010",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a time you had to estimate the effort for a firmware project. How accurate were you, and what did you learn about estimation?",
+      "answer": "**Key themes:** Planning, honesty about uncertainty, learning from experience.\n\n**Strong answer includes:**\n- Your estimation method (bottom-up, analogy, spike-based)\n- How you communicated uncertainty (ranges, not points)\n- Where the estimate went wrong and why\n- How you adjusted mid-project\n- What you changed for future estimates\n\n**Common firmware estimation traps:** Hardware delays, debug time underestimation, integration complexity, 'last 10%' testing phase.",
+      "starStory": {
+        "situation": "Asked to estimate a firmware port to a new microcontroller. Estimated 3 months based on previous ports.",
+        "task": "Deliver the port on schedule while managing stakeholder expectations.",
+        "action": "Broke the estimate into phases: BSP bring-up (2 weeks), peripheral drivers (4 weeks), application port (4 weeks), integration test (2 weeks). Reality: BSP took 3 weeks (undocumented errata), peripheral drivers took 3 weeks (better tooling), but integration testing took 5 weeks (unexpected timing differences). Communicated the slip early \u2014 at week 6 when BSP ran over \u2014 with a revised timeline.",
+        "result": "Delivered in 3.5 months instead of 3. Learned two things: always add buffer for hardware errata discovery, and integration testing is ALWAYS longer than you think in firmware. Now I estimate integration at 1.5x what feels right.",
+        "tips": "Honesty about being wrong is more impressive than claiming you're always accurate. The specific insights about errata and integration testing show real experience."
+      }
+    },
+    {
+      "id": "lead-012",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Describe a situation where you had to say 'no' to a feature request or timeline. How did you handle it?",
+      "answer": "**Key themes:** Professional courage, communication, alternatives.\n\n**Strong answer includes:**\n- Why the request was unreasonable (technical risk, quality, safety)\n- How you said no constructively (alternative proposal, phased approach)\n- How you maintained the relationship\n- The outcome\n\n**Senior/Principal angle:** You're expected to protect the team from bad decisions, not just execute orders.",
+      "starStory": {
+        "situation": "Product management wanted to add an OTA update feature to a shipping product in 2 weeks for a customer demo.",
+        "task": "Explain why shipping a half-baked OTA mechanism was more dangerous than not having one \u2014 a botched update could brick devices in the field.",
+        "action": "Prepared a 1-page risk assessment: what could go wrong (bricked devices, security vulnerabilities, partial update corruption). Proposed a phased plan: Week 1-2 demo with manual rollback capability (not production-ready), Month 2 production-ready with dual-bank, cryptographic signing, and rollback. Presented both options with clear risk labels.",
+        "result": "PM chose the phased approach. The demo went fine with manual safeguards. The production OTA shipped 6 weeks later and has been incident-free. The risk assessment became a template the team uses for all 'rush' feature requests.",
+        "tips": "Never just say 'no' \u2014 always have an alternative. The risk assessment document shows Principal-level thinking."
+      }
+    },
+    {
+      "id": "lead-013",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you handle disagreements within your team about technical approaches? Give a specific example.",
+      "answer": "**Key themes:** Conflict resolution, facilitation, consensus-building.\n\n**Strong answer includes:**\n- The specific technical disagreement\n- How you facilitated resolution (not imposed your view)\n- Whether you used data, prototypes, or discussion to decide\n- How you handled it when the team went with 'not your' approach\n- The outcome and relationship impact\n\n**Principal-level:** Show that you optimize for team decision quality, not for being right.",
+      "starStory": {
+        "situation": "Two senior engineers disagreed about the communication protocol between two subsystems \u2014 one wanted a custom binary protocol (efficient, compact), the other wanted Protocol Buffers (standard, self-describing, tooling).",
+        "task": "As the technical lead, resolve the disagreement without just pulling rank.",
+        "action": "Had each engineer write a 1-page tradeoff analysis with benchmarks. Organized a 30-minute decision meeting with clear criteria: code size impact, development time, debuggability, and future extensibility. The data showed Protocol Buffers added 12KB (acceptable) but saved 2 weeks of development and made debugging much easier.",
+        "result": "Team chose Protocol Buffers. The engineer who proposed the custom protocol was initially skeptical but appreciated the process \u2014 'fair fight, data wins.' This decision framework (criteria + benchmarks + time-boxed discussion) became our standard for technical disagreements.",
+        "tips": "The framework matters as much as the outcome. Shows you can facilitate, not just dictate."
+      }
+    },
+    {
+      "id": "lead-014",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general",
+        "sel"
+      ],
+      "question": "Tell me about the most complex firmware debugging session you've ever had. Walk me through your process from symptom to root cause.",
+      "answer": "**Key themes:** Deep technical skill, systematic methodology, persistence.\n\n**Strong answer includes:**\n- The symptom (intermittent is bonus points)\n- Your systematic approach (not 'I got lucky')\n- Tools you used (oscilloscope, logic analyzer, JTAG, printf, static analysis)\n- How long it took and how you managed frustration\n- The root cause and fix\n- What you did to prevent similar bugs\n\n**This is your chance to flex technical depth.** The more specific and gnarly the bug, the better.",
+      "starStory": {
+        "situation": "Production devices were randomly resetting in the field \u2014 no crash logs, no reproducible pattern. Happening on ~2% of deployed units.",
+        "task": "Find and fix the root cause with limited field access and no way to reproduce in the lab initially.",
+        "action": "Phase 1: Added persistent crash logging (written to flash before reset). Found the crashes were HardFaults at random PC addresses \u2014 suggested stack corruption. Phase 2: Added stack painting (0xDEADBEEF pattern) and canary checks. Found one task overflowing by ~40 bytes under specific input conditions. Phase 3: Traced the overflow to a recursive XML parser with unbounded depth on malformed input from a specific sensor variant. Fix: bounded recursion depth + increased stack by 256 bytes + added runtime stack monitoring.",
+        "result": "Zero field resets after the fix. Added stack monitoring as a standard feature in all new projects. The 3-phase approach (observe \u2192 instrument \u2192 isolate) became my standard methodology for 'impossible' bugs.",
+        "tips": "Stack corruption, HardFaults, and intermittent field issues are the hallmarks of experienced firmware engineers. This story demonstrates mastery."
+      }
+    },
+    {
+      "id": "lead-015",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Where do you see firmware/embedded engineering heading in the next 5 years? How are you preparing?",
+      "answer": "**Key themes:** Vision, adaptability, strategic thinking.\n\n**Good topics to cover:**\n- **AI/ML at the edge:** TinyML, on-device inference, model optimization for MCUs\n- **Security:** Increasingly critical \u2014 secure boot, encrypted firmware, supply chain security\n- **Rust for embedded:** Growing adoption for memory-safe firmware\n- **RISC-V:** Open-source ISA disrupting ARM's dominance in embedded\n- **CI/CD for firmware:** Moving toward software-like development practices\n- **Connectivity:** Every device becoming networked (Thread, Matter, 5G IoT)\n\n**Show you're preparing:**\n- Learning new tools/languages (mention specific things you're exploring)\n- Staying connected to the community\n- Experimenting with new architectures\n- Thinking about how your current skills transfer\n\n**Avoid:** Pure speculation without actionable insight. Ground your vision in things you're actually doing or learning.",
+      "starStory": {
+        "situation": "Firmware engineering is evolving rapidly \u2014 AI at the edge, security requirements, new architectures, and development practices from the software world.",
+        "task": "Articulate a clear vision and demonstrate you're actively evolving, not just riding existing skills.",
+        "action": "Three focus areas: (1) Security \u2014 deep-dived into secure boot, hardware root of trust, and cryptographic firmware signing. (2) Modern development practices \u2014 introduced CI/CD, automated testing, and static analysis to firmware workflows. (3) AI/edge computing \u2014 experimenting with local AI models and embedded inference on ESP32/RPi platforms.",
+        "result": "These investments positioned me to lead architecture decisions in security-critical products and mentor the team on modern practices. The AI/edge exploration opened up new product possibilities that management hadn't considered.",
+        "tips": "Make this personal \u2014 mention YOUR specific learning projects and experiments. Interviewers want to see genuine curiosity, not rehearsed trends."
+      }
+    },
+    {
+      "id": "sd-012",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "Design a real-time data logging system for an embedded device that must survive power failures. The device produces 1KB of sensor data every 100ms and has 4MB of external NOR flash.",
+      "answer": "**Architecture:**\n\n1. **Circular log with wear leveling:**\n   - Divide flash into sectors (typically 4KB each = 1024 sectors)\n   - Write sequentially, wrap around when full (oldest data overwritten)\n   - Track write pointer in RAM, persist to dedicated 'metadata sector'\n\n2. **Write strategy:**\n   - Buffer in RAM: collect ~4KB (4 samples) before committing a flash write\n   - Minimizes write cycles and amortizes erase overhead\n   - Double-buffer: fill one while flushing the other\n\n3. **Power-failure safety:**\n   - Never erase and write in same operation\n   - Each log entry has sequence number + CRC\n   - On boot: scan for highest valid sequence number to find write pointer\n   - Metadata sector uses ping-pong: two copies, write new before erasing old\n\n4. **Wear leveling:**\n   - NOR flash: ~100K erase cycles per sector\n   - At 1KB/100ms = 10KB/s = 864MB/day\n   - Each sector written ~216 times/day \u2192 ~460 days to hit 100K cycles\n   - Solution: spread writes across all sectors (circular buffer does this naturally)\n\n5. **Retrieval:**\n   - USB/UART dump command reads from oldest valid entry to newest\n   - Optional: compress with LZ4 before transmission\n\n**Key insight:** The real constraint is erase block size vs write granularity. NOR allows byte-level writes but sector-level erases \u2014 design around this asymmetry."
+    },
+    {
+      "id": "sd-013",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "Micron",
+        "general"
+      ],
+      "question": "You're designing a memory controller for an SSD. How would you implement wear leveling across NAND flash blocks, and what's the trade-off between static and dynamic wear leveling?",
+      "answer": "**Dynamic Wear Leveling:**\n- Only considers blocks that are being actively written\n- Hot data blocks get erased/rewritten frequently \u2192 spread across available erased blocks\n- Simple: maintain a free block pool, pick least-worn block for next write\n- Problem: cold data (rarely updated) camps on low-wear blocks forever, creating wear imbalance\n\n**Static Wear Leveling:**\n- Periodically moves cold data from low-wear blocks to high-wear blocks\n- Frees up the low-wear blocks for future writes\n- Trigger: when max_erase_count - min_erase_count > threshold\n- More even wear distribution but adds write amplification\n\n**Implementation:**\n1. **Block metadata table** in RAM: erase count, valid page count, last-written timestamp per block\n2. **FTL (Flash Translation Layer):** logical-to-physical page mapping, updated on every write\n3. **Garbage collection:** when free blocks < threshold, pick block with most invalid pages, copy valid pages elsewhere, erase block\n4. **Wear-leveling daemon:** background task that checks wear variance and triggers cold-data migration\n\n**Trade-offs:**\n- Dynamic only: simple, low overhead, but cold blocks create wear cliff (some blocks die decades before others)\n- Static: more even wear, longer SSD lifetime, but more write amplification (extra copies)\n- Real SSDs use both: dynamic for normal operation, static triggered periodically\n\n**Key metric:** Write Amplification Factor (WAF) = physical writes / logical writes. Good controllers achieve WAF < 2."
+    },
+    {
+      "id": "sd-014",
+      "category": "system-design",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "Design a watchdog system for a multi-processor embedded device where each processor runs independent firmware. How do you detect and recover from failures on any processor?",
+      "answer": "**Architecture: Hierarchical Watchdog**\n\n1. **Per-processor internal watchdog:**\n   - Each CPU has hardware WDT with timeout (e.g., 500ms)\n   - Main loop or dedicated task pets the watchdog\n   - Failure \u2192 hardware reset of that processor only\n\n2. **Cross-processor health monitoring:**\n   - Each processor sends periodic heartbeat over shared bus (SPI/I2C/shared memory)\n   - Heartbeat includes: sequence number, timestamp, status flags\n   - Missing heartbeats trigger escalation\n\n3. **Supervisor processor (optional):**\n   - Dedicated low-power MCU monitors all others\n   - Controls reset lines to each processor independently\n   - Can power-cycle individual subsystems\n   - Runs minimal, well-tested firmware (small attack surface)\n\n4. **Recovery strategy:**\n   - Level 1: Software reset of failed processor (heartbeat missed 3x)\n   - Level 2: Hardware reset via supervisor (if software reset didn't help)\n   - Level 3: Full system reset (if supervisor detects cascading failure)\n   - Level 4: Safe mode (minimal functionality, alert operator)\n\n5. **Gotchas:**\n   - Task-level watchdog: pet only if ALL critical tasks ran (window watchdog or task checklist pattern)\n   - Avoid: petting watchdog in a timer ISR (masks hung main loop)\n   - Shared resource deadlock: if processors share a bus, a hung processor can block the bus \u2192 use timeouts on all bus transactions"
+    },
+    {
+      "id": "sd-015",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Design a bootloader for an ARM Cortex-M microcontroller that supports firmware updates via UART, USB, and CAN bus. What are the key design decisions?",
+      "answer": "**Bootloader Architecture:**\n\n1. **Memory layout:**\n   ```\n   0x0000_0000: Bootloader (16-32KB, write-protected)\n   0x0000_8000: App header (version, size, CRC, signature, entry point)\n   0x0000_8100: Application firmware\n   0x0040_0000: Backup/staging area (for A/B or download buffer)\n   ```\n\n2. **Boot decision logic:**\n   - Check GPIO pin / button (force bootloader mode)\n   - Check 'update pending' flag in shared SRAM/flash\n   - Validate app header (magic number, CRC, signature)\n   - If valid \u2192 jump to app. If not \u2192 stay in bootloader\n\n3. **Multi-transport abstraction:**\n   ```c\n   typedef struct {\n     int (*init)(void);\n     int (*receive)(uint8_t *buf, size_t len, uint32_t timeout_ms);\n     int (*send)(const uint8_t *buf, size_t len);\n   } transport_t;\n   ```\n   - UART: simple, universally available, slow (~115200 baud)\n   - USB DFU: standard protocol, fast, requires USB peripheral\n   - CAN: robust for automotive/industrial, message-based (need segmentation protocol like ISO-TP)\n   - Common protocol layer on top: packet framing, ACK/NAK, sequence numbers\n\n4. **Security:**\n   - Verify firmware signature before writing (not just after)\n   - Lock bootloader flash region (MPU or flash write-protect bits)\n   - Anti-rollback: version counter in OTP or protected flash\n\n5. **Key decisions:**\n   - Size budget: bootloader should be small (16-32KB) \u2014 no RTOS, minimal drivers\n   - Jump to app: set MSP from app vector table[0], branch to reset handler at vector table[1]\n   - Interrupts: relocate VTOR to app's vector table before jumping\n   - Timeout: if no update command received within N seconds, boot the app anyway"
+    },
+    {
+      "id": "sd-016",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "Design a communication protocol for an embedded device that must be reliable over a noisy RS-485 bus with up to 32 devices. How do you handle addressing, collision, error detection, and recovery?",
+      "answer": "**Protocol Design:**\n\n1. **Physical layer:** RS-485 half-duplex, differential signaling, up to 32 nodes on one bus, 120\u03a9 termination at each end.\n\n2. **Addressing:** 5-bit address (0-31), address 0 reserved for broadcast. Each device has unique address set via DIP switch or flash config.\n\n3. **Frame format:**\n   ```\n   [SYNC 0xAA][DEST 1B][SRC 1B][LEN 2B][SEQ 1B][CMD 1B][PAYLOAD 0-256B][CRC16 2B]\n   ```\n   - SYNC byte for framing\n   - CRC-16/CCITT over everything except SYNC and CRC fields\n\n4. **Bus arbitration (master-slave):**\n   - One master polls each slave in round-robin\n   - Slaves only transmit when polled (no collisions)\n   - Token-passing variant: master passes token, token holder can transmit, then passes back\n   - Timeout: if polled device doesn't respond within 10ms, skip and mark as offline\n\n5. **Error handling:**\n   - CRC mismatch \u2192 NAK, request retransmit (max 3 retries)\n   - Sequence number detects duplicates and missing frames\n   - Bus stuck detection: if bus is busy for > max frame time, reset transceiver\n   - Exponential backoff on repeated failures\n\n6. **Reliability features:**\n   - ACK required for all unicast commands\n   - Broadcast messages: no ACK (fire-and-forget, repeat 3x for reliability)\n   - Heartbeat: master sends periodic poll, missing responses trigger fault status\n\n**Why master-slave over CSMA/CD:** Deterministic timing (critical for real-time systems), simpler implementation, guaranteed worst-case latency."
+    },
+    {
+      "id": "sd-017",
+      "category": "system-design",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "You need to implement a command-line interface (CLI) over UART for debugging an embedded device. How do you design it to be useful, maintainable, and safe for production?",
+      "answer": "**Design:**\n\n1. **Command table architecture:**\n   ```c\n   typedef struct {\n     const char *name;\n     const char *help;\n     int (*handler)(int argc, char *argv[]);\n     uint8_t min_args;\n     bool requires_auth; // production safety\n   } cli_cmd_t;\n   ```\n   - Static table of commands, easily extensible\n   - Each module registers its own commands (decentralized)\n\n2. **Input handling:**\n   - Character-by-character receive in ISR \u2192 ring buffer\n   - Line editing: backspace, basic cursor movement\n   - History buffer (last 8 commands, up/down arrow recall)\n   - Tab completion against command table\n\n3. **Parsing:**\n   - Tokenize input by whitespace (like argc/argv)\n   - Support quoted strings for arguments with spaces\n   - Lookup command name in table, call handler\n\n4. **Useful commands:**\n   - `help` \u2014 list all commands with descriptions\n   - `mem read/write <addr>` \u2014 peek/poke memory\n   - `gpio read/set/clear <pin>` \u2014 GPIO control\n   - `log level <module> <level>` \u2014 runtime log filtering\n   - `status` \u2014 system health (uptime, free heap, task stats)\n   - `reboot` \u2014 controlled restart\n   - `version` \u2014 firmware version, build date, git hash\n\n5. **Production safety:**\n   - Compile-time flag to disable dangerous commands (mem write, gpio set)\n   - Or: require authentication token before unlocking debug commands\n   - Rate-limit output to prevent UART flooding blocking real-time tasks\n   - Run CLI in lowest-priority task\n\n**Key insight:** The CLI is often the most valuable debugging tool in the field. Invest in it early \u2014 it pays for itself every time you're staring at a device with no debugger attached."
+    },
+    {
+      "id": "sd-018",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "Design a safety-critical embedded system that must meet IEC 61508 SIL 2 requirements. What architectural patterns and development practices do you apply?",
+      "answer": "**Architecture for SIL 2:**\n\n1. **Redundancy pattern \u2014 1oo2D (1 out of 2 with diagnostics):**\n   - Two independent processing channels\n   - Each channel computes independently, results compared\n   - Disagreement \u2192 safe state (de-energize outputs)\n   - Diagnostic coverage must detect >90% of dangerous failures\n\n2. **Memory protection:**\n   - RAM: periodic CRC checks on critical data structures\n   - Flash: startup and periodic integrity checks (CRC/hash over code space)\n   - Stack: canary values, stack overflow detection\n   - MPU configured to isolate safety-critical regions\n\n3. **Execution monitoring:**\n   - Program flow monitoring: checkpoint tokens at key execution points\n   - Watchdog: window watchdog (must be pet within specific time window, not too early, not too late)\n   - CPU self-test: ALU, register file tests at startup (IEC 60730 Class B)\n\n4. **Safe state design:**\n   - Define what 'safe' means for each output (usually de-energized/off)\n   - Fail-safe outputs: hardware design ensures outputs go safe on power loss\n   - Independent safety relay controlled by diagnostic processor\n\n5. **Development practices:**\n   - Coding standard: MISRA C (mandatory for SIL 2+)\n   - Static analysis: Polyspace, PC-lint, or Coverity\n   - Unit test coverage: >90% statement coverage, MC/DC for safety functions\n   - Traceability: requirements \u2192 design \u2192 code \u2192 tests (full V-model)\n   - Independent review of safety-critical code\n   - Proven-in-use arguments for RTOS and compilers\n\n**Key insight:** SIL 2 is achievable with a single processor + diagnostics if your diagnostic coverage is high enough. SIL 3+ typically requires hardware redundancy."
+    },
+    {
+      "id": "sd-019",
+      "category": "system-design",
+      "difficulty": "medium",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "How would you design a power management subsystem for a battery-powered embedded device that needs to last 5 years on 2 AA batteries?",
+      "answer": "**Power Budget Analysis:**\n- 2 AA batteries \u2248 5000 mAh total\n- 5 years = 43,800 hours\n- Average current budget: 5000/43800 \u2248 **114 \u00b5A average**\n\n**Architecture:**\n\n1. **Sleep modes (the biggest lever):**\n   - Deep sleep 99.9% of the time (~2-5 \u00b5A)\n   - Wake on RTC alarm, GPIO interrupt, or watchdog timer\n   - Active only during measurement + transmit (~20-50ms bursts)\n   - Example: wake every 60s, sample sensor, transmit, sleep = 99.97% sleep\n\n2. **Hardware design:**\n   - Low-quiescent-current LDO regulator (<1\u00b5A Iq)\n   - Power gating: MOSFET switches to cut power to peripherals (sensors, radio) when sleeping\n   - No LEDs in production (or duty-cycled dim flash)\n   - Avoid pull-up/pull-down resistors that waste current\n\n3. **Firmware strategies:**\n   - Minimize active time: pre-compute, batch operations\n   - DMA for data transfers (CPU can sleep during transfer)\n   - Turn off unused peripherals (ADC, UART, SPI) before sleeping\n   - Use lowest clock speed that meets timing requirements\n   - RAM retention mode: keep critical state, avoid full re-initialization on wake\n\n4. **Radio optimization (if wireless):**\n   - Radio TX/RX is the #1 power consumer (10-40mA)\n   - Minimize airtime: short packets, efficient encoding\n   - Batch transmissions: send accumulated data in bursts\n   - Use listen-before-talk to avoid collisions and retransmits\n\n5. **Monitoring:**\n   - Battery voltage monitoring via ADC (with voltage divider, disabled when not sampling)\n   - Brownout detection for graceful shutdown\n   - Log power events for field analysis\n\n**Key insight:** Power management is a system-level problem. A 1\u00b5A savings in sleep current matters more than a 10mA savings in active current if you're sleeping 99.9% of the time."
+    },
+    {
+      "id": "sd-020",
+      "category": "system-design",
+      "difficulty": "hard",
+      "type": "conceptual",
+      "companies": [
+        "general"
+      ],
+      "question": "Design an RTOS task architecture for an embedded system that handles: sensor sampling (10 Hz), motor control (1 kHz), user display (30 Hz), communication (async), and data logging. How do you assign priorities and prevent issues?",
+      "answer": "**Task Architecture (Rate Monotonic Scheduling):**\n\n| Task | Rate | Priority | Pattern |\n|------|------|----------|---------|\n| Motor control | 1 kHz | Highest | Timer ISR + deferred processing task |\n| Sensor sampling | 10 Hz | High | Timer-triggered, posts to queue |\n| Communication | Async | Medium | Event-driven, blocks on message queue |\n| Data logging | Buffered | Low | Consumes sensor queue, writes in batches |\n| Display update | 30 Hz | Lowest | Renders from shared state, tolerates jitter |\n\n**Key Design Patterns:**\n\n1. **ISR \u2192 Task handoff:**\n   - Motor control: Timer ISR reads encoder, computes PID, sets PWM (keep ISR < 10\u00b5s)\n   - If PID is complex: ISR signals high-priority task via semaphore\n\n2. **Producer-consumer queues:**\n   - Sensor task \u2192 queue \u2192 data logging task\n   - Decouples sampling rate from write rate\n   - Queue depth = burst tolerance\n\n3. **Shared state protection:**\n   - Display reads sensor values: use double-buffer or atomic copy\n   - Avoid mutexes between high and low priority tasks (priority inversion!)\n   - If mutex needed: use priority inheritance protocol\n\n4. **Priority inversion prevention:**\n   - Use priority inheritance mutexes\n   - Or better: design to minimize shared resources\n   - Lock-free data structures where possible (single-producer, single-consumer queues)\n\n5. **Watchdog integration:**\n   - Each task sets a 'healthy' flag when it runs\n   - Watchdog task (medium priority) checks all flags, pets hardware WDT only if all are set\n   - Detects hung tasks, not just crashed system\n\n**Gotchas:** Stack sizing (each task needs its own stack \u2014 profile with watermarks), ISR stack overflow (shared on Cortex-M), priority inversion with logging (never block high-priority task on flash write)."
+    },
+    {
+      "id": "lead-017",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a time you identified a systemic quality problem in your team's codebase. How did you drive improvement without stopping feature delivery?",
+      "answer": "**Key themes:** Technical leadership, process improvement, balancing tech debt with delivery.\n\n**Strong answer includes:**\n- How you identified the systemic issue (not just one bug, but a pattern)\n- Data you gathered to make the case (bug rates, review findings, field failures)\n- Your incremental improvement strategy (not 'stop everything and rewrite')\n- How you got buy-in from the team and management\n- Measurable results over time",
+      "starStory": {
+        "situation": "Code reviews kept catching the same categories of bugs: uninitialized variables, missing error handling on I/O operations, and buffer overflows in protocol parsers.",
+        "task": "Reduce defect rates without halting the release schedule or mandating a disruptive rewrite.",
+        "action": "Introduced three changes incrementally: (1) Added static analysis to CI pipeline \u2014 catches mechanical bugs automatically. (2) Created a 'bug pattern' wiki page with before/after examples \u2014 educational, not punitive. (3) Established a 'boy scout rule' \u2014 every PR must improve one thing beyond its scope (add an assertion, fix a warning, add a test).",
+        "result": "Over 6 months, code review rejection rate dropped 40%. Field bug reports in the affected subsystem dropped from ~12/quarter to 3. The team internalized the patterns and started catching issues in their own code before review.",
+        "tips": "Emphasize the gradual, non-disruptive approach. Principal engineers improve systems without heroics."
+      }
+    },
+    {
+      "id": "lead-018",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "How do you approach mentoring junior firmware engineers? Give a specific example.",
+      "answer": "**Key themes:** Knowledge transfer, growing talent, patience, enabling independence.\n\n**Strong answer includes:**\n- Your mentoring philosophy (enable, don't just tell)\n- A specific mentoring relationship or situation\n- How you adapted your approach to the individual\n- Evidence of the mentee's growth\n- How you balanced mentoring with your own deliverables",
+      "starStory": {
+        "situation": "A new hire with a CS background but no embedded experience was assigned to write a SPI flash driver for a production product.",
+        "task": "Get them productive on real firmware without hand-holding every line, while ensuring the driver met production quality standards.",
+        "action": "Started with a 30-minute whiteboard session on SPI fundamentals and the flash datasheet. Then gave them a working reference driver from another project to study \u2014 not copy, study. Set up daily 15-minute check-ins for the first two weeks where they'd explain their design decisions and I'd ask guiding questions. Reviewed their first draft thoroughly with detailed comments explaining *why*, not just *what* to change.",
+        "result": "They delivered a solid driver in 3 weeks. More importantly, they started applying the same patterns (datasheet-first, defensive error handling, test harness) to subsequent tasks independently. Six months later they were mentoring an intern on I2C.",
+        "tips": "Show that you create independent engineers, not dependent ones. 'I taught them to fish' stories resonate at the principal level."
+      }
+    },
+    {
+      "id": "lead-019",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Describe a situation where you had to coordinate firmware development across multiple teams or disciplines (hardware, software, test, manufacturing). What was your approach?",
+      "answer": "**Key themes:** Cross-functional leadership, communication, interface definition, alignment.\n\n**Strong answer includes:**\n- The complexity of the coordination challenge\n- How you defined interfaces and contracts between teams\n- Communication mechanisms you established\n- How you handled misalignments or conflicts\n- The outcome and lessons learned",
+      "starStory": {
+        "situation": "A new product required firmware changes synchronized with a hardware revision, a manufacturing test update, and a host software release \u2014 four teams, three-month window.",
+        "task": "Ensure all teams delivered compatible changes on time without blocking each other during development.",
+        "action": "Created an interface specification document defining the exact protocol versions, register maps, and test points each team could depend on. Established a weekly 30-minute sync with one rep from each team \u2014 agenda was always: blockers, interface changes, timeline risks. Used feature flags in firmware so we could develop against the new hardware interface while still testing on old boards.",
+        "result": "All four deliverables shipped in the same release window. Zero integration surprises because interfaces were locked early. The interface spec became a template the org reused for subsequent cross-team projects.",
+        "tips": "Principal engineers are expected to operate across team boundaries. Emphasize that you led through influence and documentation, not authority."
+      }
+    },
+    {
+      "id": "lead-020",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a time you had to balance technical perfection with shipping on time. How did you decide what to cut?",
+      "answer": "**Key themes:** Pragmatism, risk assessment, 'good enough' engineering, technical debt management.\n\n**Strong answer includes:**\n- The competing pressures (deadline, quality, scope)\n- Your framework for deciding what to defer vs. what's non-negotiable\n- How you communicated trade-offs to stakeholders\n- What 'technical debt' you accepted and your plan to address it\n- The outcome \u2014 did the trade-off work?",
+      "starStory": {
+        "situation": "Two weeks before a firmware release, we discovered the new power management code had an edge case that could cause a 50ms latency spike during USB enumeration. Non-safety, but impacted user experience.",
+        "task": "Decide whether to delay the release to fix it properly (rewrite the power state machine) or ship with a workaround.",
+        "action": "Analyzed the impact: the spike only occurred during initial USB plug-in, not during operation. Implemented a targeted workaround (delay the power transition until after enumeration completes). Documented the root cause and proper fix as a tracked tech debt item with a commitment to address it in the next release. Presented the trade-off to the team: 'We can ship on time with this workaround, here's the risk, here's the plan to fix it properly.'",
+        "result": "Shipped on time. No customer complaints about the edge case. Fixed it properly in the next release as planned. The documentation meant the fix wasn't forgotten \u2014 it was the first item in the next sprint.",
+        "tips": "Show that you're not a perfectionist who blocks releases, but also not someone who sweeps problems under the rug. The key is: document the debt, plan the fix, communicate the trade-off."
+      }
+    },
+    {
+      "id": "lead-021",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a firmware bug that made it to production. How was it discovered, what was the root cause, and what process changes did you implement to prevent similar issues?",
+      "answer": "**Key themes:** Post-mortem culture, systemic thinking, process improvement, accountability.\n\n**Strong answer includes:**\n- The bug: what it did, impact to customers\n- Discovery: how it was found (field report, monitoring, customer complaint)\n- Root cause: not just 'what' but 'why did it escape testing?'\n- Fix: both the immediate patch and the process improvement\n- Follow-through: evidence the process change actually worked",
+      "starStory": {
+        "situation": "A firmware update caused intermittent device resets in the field \u2014 about 2% of devices, only under heavy load. Our test suite hadn't caught it.",
+        "task": "Diagnose the field issue, ship a fix, and figure out why our testing missed it.",
+        "action": "Added crash dump analysis to the firmware (captured register state and stack trace on fault). Field data showed a stack overflow in the network task \u2014 the new feature had increased stack usage beyond the allocated size, but only when multiple large packets arrived simultaneously. Fixed the stack size and added a runtime stack watermark monitor that logs warnings at 80% usage. For prevention: added a CI step that measures worst-case stack usage via static analysis (GCC -fstack-usage + a custom aggregator).",
+        "result": "Hotfix shipped within 48 hours. Stack overflow monitor caught two more near-misses in the next release cycle before they became bugs. The static analysis step became standard for all firmware repos in the org.",
+        "tips": "Production bugs are inevitable \u2014 interviewers want to see how you respond. Blameless post-mortems and systemic fixes are what distinguish senior engineers."
+      }
+    },
+    {
+      "id": "lead-022",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you evaluate and introduce new tools or technologies into an established firmware team? Give an example.",
+      "answer": "**Key themes:** Change management, evidence-based advocacy, pragmatism, team buy-in.\n\n**Strong answer includes:**\n- What the tool/technology was and the problem it solved\n- How you evaluated it (proof of concept, not just reading the docs)\n- How you got team buy-in (showed, didn't told)\n- How you managed the transition (incremental, not big-bang)\n- Results and adoption",
+      "starStory": {
+        "situation": "Our team was using printf debugging exclusively. Build-test-debug cycles were slow, especially for timing-sensitive bugs that disappeared with breakpoints.",
+        "task": "Introduce a lightweight tracing framework without disrupting ongoing development or requiring a steep learning curve.",
+        "action": "Built a minimal trace buffer implementation over a weekend \u2014 circular RAM buffer, timestamped events, dump via UART command. Integrated it into my own subsystem first as a proof of concept. Used it to diagnose a real bug in 20 minutes that had been open for a week. Presented the before/after at a team meeting. Made adoption zero-friction: single header include, three API calls (init, log, dump).",
+        "result": "Within a month, every engineer on the team was using it. We later added SWO streaming output and a Python visualization tool. Debug time for timing-related bugs dropped by roughly half. The key was making it easy and proving value on a real problem first.",
+        "tips": "Show that you lead by example, not by mandate. 'I built a thing, used it to solve a real problem, and the team adopted it organically' is the pattern."
+      }
+    },
+    {
+      "id": "lead-023",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Describe a time you inherited a legacy codebase with significant technical debt. How did you approach improving it while maintaining the product?",
+      "answer": "**Key themes:** Strategic refactoring, risk management, incremental improvement, pragmatism.\n\n**Strong answer includes:**\n- The state of the codebase (specific problems, not just 'it was bad')\n- Your assessment methodology (how you decided what to fix first)\n- Incremental strategy (strangler fig pattern, modular isolation, etc.)\n- How you maintained the product while improving the code\n- Measurable outcomes",
+      "starStory": {
+        "situation": "Took ownership of a 10-year-old firmware codebase \u2014 200K lines of C, no unit tests, global variables everywhere, one giant main loop with deeply nested if-else chains. But it was shipping and working in the field.",
+        "task": "Make the codebase maintainable and extensible without breaking what worked, while still delivering new features.",
+        "action": "Prioritized by pain: identified the 3 modules that caused 80% of bugs (classic Pareto). Started with the worst one: extracted it into a clean module with a defined interface, wrote unit tests for the extracted module, and replaced the original with a thin wrapper that called the new module. Each feature PR had to leave the area it touched cleaner than it found it. Created an 'architecture decision record' for each major change so future engineers understood the 'why'.",
+        "result": "Over 18 months, the top 3 problem modules were fully extracted and tested. Bug rate in those areas dropped to near zero. New features in refactored areas took 40% less time to implement. The codebase was still the same product \u2014 no rewrite, no feature freeze, no big bang migration.",
+        "tips": "Never say 'I rewrote it from scratch' in an interview \u2014 that's a red flag. The skill is improving a running system incrementally. Mention the strangler fig pattern by name if the interviewer is technical."
+      }
+    },
+    {
+      "id": "lead-024",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "SEL",
+        "Micron",
+        "general"
+      ],
+      "question": "How do you handle a situation where you and a peer technical lead disagree on the architecture for a shared component?",
+      "answer": "**Key themes:** Collaboration, conflict resolution, shared ownership, ego management.\n\n**Strong answer includes:**\n- The specific architectural disagreement\n- How you sought to understand their perspective first\n- The resolution process (data, prototypes, third-party input)\n- How you maintained the relationship regardless of outcome\n- What you learned from their perspective",
+      "starStory": {
+        "situation": "A peer lead wanted to use a full RTOS for a simple sensor node. I advocated for a bare-metal super-loop \u2014 the device had 32KB flash and no need for preemptive scheduling.",
+        "task": "Reach a technical decision without it becoming a political battle or damaging the working relationship.",
+        "action": "Asked them to walk me through their reasoning \u2014 turns out they were concerned about future feature additions requiring concurrent tasks. Valid point. I proposed a compromise: bare-metal now with a cooperative scheduler abstraction layer that could be swapped for an RTOS later if needed. Built a quick prototype showing the memory footprint difference (8KB RTOS overhead vs 200 bytes for the cooperative scheduler).",
+        "result": "We went with the cooperative approach. Six months later, the feature set grew but never needed preemptive scheduling \u2014 the abstraction layer made it easy to add new 'tasks' without an RTOS. My peer later used the same pattern on another project.",
+        "tips": "Always show that you listened and incorporated their concern. 'I won the argument' is the wrong conclusion. 'We found a better solution together' is right."
+      }
+    },
+    {
+      "id": "lead-025",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "What's your approach to code review? How do you balance thoroughness with velocity, and how do you handle reviews of code from more senior or more junior engineers?",
+      "answer": "**Key themes:** Code quality culture, communication style, mentoring, pragmatism.\n\n**Strong answer includes:**\n- Your review priorities (correctness > design > style)\n- How you communicate feedback (constructive, specific, with reasoning)\n- How you adapt for audience (junior: more educational, senior: focus on design)\n- How you handle disagreements in reviews\n- How you keep reviews from becoming bottlenecks",
+      "starStory": {
+        "situation": "As the senior reviewer on the team, every PR came through me. Reviews were becoming a bottleneck \u2014 averaging 2-day turnaround, and some engineers were waiting to submit until they thought the code was 'perfect.'",
+        "task": "Maintain code quality while reducing review latency and creating a healthier review culture.",
+        "action": "Three changes: (1) Tiered reviews \u2014 not every PR needs the senior reviewer. Established guidelines: junior PRs need senior review, but peer reviews between mid-level engineers are sufficient for routine changes. (2) Set a personal SLA: first review pass within 4 hours during business hours. (3) Shifted review comments from 'do this' to 'consider this because...' \u2014 explaining the reasoning made engineers internalize patterns and produce better first drafts.",
+        "result": "Review turnaround dropped to same-day. The team started catching more issues in peer reviews \u2014 they'd learned what to look for from my earlier detailed reviews. I only reviewed architecture-level changes and complex algorithms. Quality stayed the same or improved.",
+        "tips": "Code review is AJ's bread and butter \u2014 this is a strong story area. Emphasize creating a review culture, not being a gatekeeper."
+      }
+    },
+    {
+      "id": "lead-026",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a time you had to deliver bad news about a project timeline or technical feasibility to management. How did you handle it?",
+      "answer": "**Key themes:** Honest communication, solution-oriented thinking, managing up, credibility.\n\n**Strong answer includes:**\n- The bad news and why it was significant\n- How you discovered it (early, not at the last minute)\n- What alternatives or mitigations you brought to the conversation\n- How you delivered the message (data, options, recommendation)\n- The outcome and relationship impact",
+      "starStory": {
+        "situation": "Three months into a 6-month firmware project, silicon bring-up revealed that the new ASIC had a hardware bug in the DMA controller that made our planned architecture infeasible within the original timeline.",
+        "task": "Communicate the delay and propose a path forward without losing stakeholder confidence.",
+        "action": "Quantified the impact: the workaround required redesigning the data pipeline, adding 8-10 weeks. Prepared three options: (1) Full fix, +10 weeks. (2) Ship with reduced throughput using polling instead of DMA, on time. (3) Split the release \u2014 ship core features now with polling, DMA optimization in a follow-up. Presented all three with trade-offs to management. Recommended option 3.",
+        "result": "Management chose option 3. We shipped the core product on time, and the DMA optimization shipped 6 weeks later. The key was bringing options, not just a problem. My credibility went up because I flagged it early with a plan, rather than missing the deadline.",
+        "tips": "Never show up with just a problem. Always bring options. And flag early \u2014 'I told you 3 months ago' is infinitely better than 'surprise, we're late.'"
+      }
+    },
+    {
+      "id": "lead-027",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "How do you stay current with embedded systems technology and bring new knowledge back to your team?",
+      "answer": "**Key themes:** Continuous learning, knowledge sharing, technical curiosity.\n\n**Strong answer includes:**\n- Specific sources you follow (not just 'I read articles')\n- How you evaluate what's worth adopting vs. what's hype\n- How you share knowledge with your team\n- An example of something you learned that directly benefited a project\n\n**Strong sources to mention:**\n- Embedded.fm podcast, Memfault blog, Interrupt blog\n- Conference talks (Embedded World, CppCon embedded track)\n- Vendor app notes and errata sheets (underrated knowledge source)\n- Open-source projects (Zephyr RTOS, FreeRTOS, Linux kernel for patterns)\n- Personal projects (shows genuine interest, not just job requirements)\n\n**How to share:**\n- Tech talks: monthly 30-min presentations, rotate presenters\n- 'Interesting finds' Slack channel\n- Architecture Decision Records for new patterns adopted\n- Brown bag sessions for hands-on learning"
+    },
+    {
+      "id": "lead-028",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "SEL",
+        "general"
+      ],
+      "question": "Describe your approach to defining and enforcing firmware coding standards. How do you balance consistency with developer autonomy?",
+      "answer": "**Key themes:** Standards as enablers (not bureaucracy), tooling over policing, team ownership.\n\n**Strong answer includes:**\n- Why standards matter in firmware (safety, long-lived code, multi-developer)\n- How you get team buy-in (collaborative definition, not top-down decree)\n- How you enforce (automated tools, not manual policing)\n- Where you allow flexibility and why\n- How the standards evolve over time",
+      "starStory": {
+        "situation": "Joined a team with no formal coding standard \u2014 each engineer had their own style, making code reviews contentious about formatting instead of logic.",
+        "task": "Establish a coding standard that improved consistency and review quality without feeling like a bureaucratic imposition.",
+        "action": "Proposed starting from BARR-C (lightweight embedded C standard) as a baseline. Held a team meeting where everyone could propose modifications \u2014 this gave ownership. Automated everything possible: clang-format for style (no more style debates in reviews), clang-tidy for common bug patterns, custom CI checks for project-specific rules (no malloc in ISR context, no floating point in safety-critical paths). Left 'judgment calls' to the developer \u2014 naming conventions were a guideline, not a hard rule.",
+        "result": "Code reviews shifted from 'move this brace' to 'this algorithm has a subtle race condition.' Review quality improved dramatically. New team members could onboard faster because the code looked consistent. The team owned the standard \u2014 they updated it quarterly based on lessons learned.",
+        "tips": "For SEL specifically, mention awareness of MISRA C and IEC 61508 requirements. For any role: emphasize automation \u2014 humans shouldn't enforce what tools can check."
+      }
+    },
+    {
+      "id": "lead-029",
+      "category": "leadership",
+      "difficulty": "medium",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "Tell me about a project where requirements changed significantly mid-development. How did you adapt?",
+      "answer": "**Key themes:** Adaptability, architectural resilience, stakeholder management, pragmatism.\n\n**Strong answer includes:**\n- The original plan and the change\n- Impact assessment (what was salvageable, what wasn't)\n- How you restructured the work\n- Communication with stakeholders\n- Lessons about building flexibility into designs",
+      "starStory": {
+        "situation": "Midway through a firmware project for a USB-connected device, the product team decided to add Bluetooth Low Energy (BLE) connectivity \u2014 a completely new radio stack, on the same MCU, with the same ship date.",
+        "task": "Integrate BLE without destabilizing the existing USB firmware or slipping the schedule.",
+        "action": "First, assessed the MCU resources \u2014 the existing firmware used 60% flash, 40% RAM, so we had headroom. The key was that we'd built the application layer with a transport abstraction from day one (good luck). BLE became a new transport driver implementing the same interface. Split the team: two engineers continued USB feature work, I took BLE integration with one other engineer. Used the BLE stack vendor's certified library rather than implementing from scratch \u2014 buying vs building to meet the timeline.",
+        "result": "Shipped both USB and BLE support on time. The transport abstraction meant the application layer didn't change at all. If we hadn't built that abstraction early, this would have been a 3-month rewrite.",
+        "tips": "The real lesson here is about building flexibility into your architecture from the start. Good abstractions aren't gold-plating \u2014 they're insurance against changing requirements."
+      }
+    },
+    {
+      "id": "lead-030",
+      "category": "leadership",
+      "difficulty": "hard",
+      "type": "behavioral",
+      "companies": [
+        "general"
+      ],
+      "question": "As a principal/lead engineer, how do you decide what to work on yourself versus what to delegate? Give an example where you made the wrong call initially.",
+      "answer": "**Key themes:** Delegation, leverage, self-awareness, multiplier effect.\n\n**Strong answer includes:**\n- Your framework for deciding (risk, learning opportunity, uniqueness)\n- What you keep: architecture decisions, cross-team interfaces, high-risk components\n- What you delegate: well-defined tasks, growth opportunities for others\n- An honest example of getting it wrong\n- How you corrected and what you learned",
+      "starStory": {
+        "situation": "On a tight deadline, I kept a complex DMA driver implementation for myself because I was 'the fastest' at that kind of work. Meanwhile, a mid-level engineer sat idle waiting for me to define their next task.",
+        "task": "Retrospectively, I should have delegated the DMA driver and focused on the system architecture work that only I could do.",
+        "action": "After the deadline passed, I reflected on the bottleneck. The DMA driver took me 3 days. It would have taken the mid-level engineer 5-6 days, but during those 3 days I was also the bottleneck for three other decisions. Net: I saved 2-3 days on one task but cost the team 3+ days of blocked work. Changed my approach: now I delegate anything that someone else can do within 2x my time, especially if it's a growth opportunity. I invest time in clear specifications and check-ins instead.",
+        "result": "Team velocity increased. The mid-level engineer grew faster because they tackled challenging work. I focused on architecture, cross-team coordination, and unblocking \u2014 the things with the highest leverage. Principal engineers are force multipliers, not individual contributors who happen to be senior.",
+        "tips": "Admitting a mistake shows self-awareness and growth \u2014 interviewers love this. The 'multiplier' framing is perfect for principal-level roles."
+      }
     }
   ]
 }
